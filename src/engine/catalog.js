@@ -37,6 +37,14 @@ function kernelView(entry) {
   const ops = Array.from(new Set(m.capabilities.map((c) => c.op))).sort();
   return {
     ...pub,
+    /**
+     * 界面上显示的名字（软件层面的命名，见 shared/pluginName.js）：
+     * 「类型 + 最典型的两个扩展名」，例如「图片 PNG / JPG」。
+     * 代码层面的原清单名保留在 codeName 里，详情页会显示出来。
+     */
+    name: entry.displayName || pub.name,
+    displayName: entry.displayName || pub.name,
+    codeName: m.name,
     kindLabel: KIND_LABELS[m.kind] || m.kind,
     ready,
     statusLabel: STATUS_LABELS_ZH[entry.status] || entry.status,

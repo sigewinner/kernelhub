@@ -332,7 +332,10 @@ export async function mount(host, ctx) {
     sheetBody.appendChild(h('div.param-section', null,
       h('div.param-section__title', null, h('span', { textContent: '概览' })),
       kvRows([
-        ['名称', `${orDash(kernel.name)}（${orDash(kernel.id)}）`],
+        // 显示名是软件层面的叫法；原名与 id 是代码层面的，一并列出便于对照
+        ['名称', orDash(kernel.displayName || kernel.name)],
+        ['插件原名', orDash(kernel.codeName)],
+        ['插件 id', orDash(kernel.id)],
         ['状态', orDash(kernel.statusLabel || kernel.status)],
         ['类型', orDash(kernel.kindLabel || kernel.kind)],
         ['优先级', String(orDash(kernel.priority))],

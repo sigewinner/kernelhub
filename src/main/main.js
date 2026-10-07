@@ -31,6 +31,7 @@ const { Hub } = require('../engine/hub');
 const { PluginStore } = require('../engine/pluginStore');
 const { JobQueue, STATE } = require('../engine/queue');
 const catalog = require('../engine/catalog');
+const pluginName = require('../shared/pluginName');
 const { clearProbeCache } = require('../engine/python');
 const { formatOfPath, basenameOf, extOf, CKP_VERSION } = require('../shared/protocol');
 const { humanSize } = catalog;
@@ -43,6 +44,8 @@ let registry = null;
 let hub = null;
 let queue = null;
 let pluginStore = null;
+/** 上一次算显示名时是否有变化（目录首次拉到会补上限定名） */
+let displayNamesChanged = false;
 
 /* ------------------------------------------------------------------ 中枢 */
 
@@ -60,6 +63,34 @@ function registryOptions(hubRoot) {
     disabledKernels: settings.get('disabledKernels', []),
     priorityOverrides: settings.get('priorityOverrides', {}),
   };
+}
+
+/**
+ * 给内核算「界面显示名」并挂到条目上（软件层面的命名，代码里的 id 与清单原名不动）。
+ *
+ * 判重集合刻意用「已安装 ∪ 插件目录」：只按已安装算的话，同一个插件在
+ * 「已安装」标签页没有限定名、在「可安装」标签页却有，看起来像两个东西。
+ * 目录还没拉过（首次离线启动）时退化为只用已安装集合，拉到目录后会再算一次。
+ *
+ * @returns {Map<string,string>} id → 显示名
+ */
+function applyDisplayNames() {
+  const catalogCache = pluginStore ? pluginStore.cachedCatalog() : null;
+  const items = pluginName.mergeItems(
+    pluginName.itemsFromKernels(registry.allEntries()),
+    pluginName.itemsFromCatalog(catalogCache)
+  );
+  const map = pluginName.assignDisplayNames(items);
+
+  let changed = false;
+  for (const entry of registry.allEntries()) {
+    const next = map.get(entry.id) || entry.manifest.name;
+    if (entry.displayName && entry.displayName !== next) changed = true;
+    entry.displayName = next;
+  }
+  // 目录首次拉到后名字可能变（比如补上限定名）→ 让界面重取一次内核列表
+  displayNamesChanged = changed;
+  return map;
 }
 
 /**
@@ -140,6 +171,9 @@ function createHub() {
   // 插件商店：壳本身不带内核，插件从这里按需装到 <hubRoot>/plugins
   pluginStore = new PluginStore({ hubRoot, stateDir: resolveStateDir(), settings });
 
+  // 目录缓存可能已经有了，这时判重集合最完整（已安装 ∪ 目录），重算一次显示名
+  applyDisplayNames();
+
   const send = (channel, payload) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
   };
@@ -204,6 +238,7 @@ function reloadRegistry() {
   registry.disabled = new Set(settings.get('disabledKernels', []));
   registry.priorityOverrides = { ...(settings.get('priorityOverrides', {})) };
   registry.discover();
+  applyDisplayNames();
   return catalog.statusOverview(registry);
 }
 
@@ -505,7 +540,15 @@ function registerIpc() {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('evt:plugin:progress', payload);
   };
 
-  handle('plugins:list', (opts) => pluginStore.list({ refresh: Boolean(opts && opts.refresh) }));
+  handle('plugins:list', async (opts) => {
+    const data = await pluginStore.list({ refresh: Boolean(opts && opts.refresh) });
+    // 目录（可能刚拉到）到手后重算显示名：保证「已安装」与「可安装」两个标签用的是同一套判重集合
+    const map = applyDisplayNames();
+    for (const row of (data && data.plugins) || []) row.displayName = map.get(row.id) || row.name;
+    // 名字变了就告诉界面：内核列表用的是另一份数据，需要重取（只重新序列化，不重新探测）
+    data.namesChanged = displayNamesChanged;
+    return data;
+  });
 
   /**
    * 插件变更后的统一收尾：重建内核表，并把该插件对应的内核视图一并返回。
@@ -1091,6 +1134,37 @@ async function runSelfTest() {
       await settle(900);
       const afterAlias = await js(`Array.from(document.querySelectorAll('#view .toolbar .btn')).map((b) => b.innerText.trim())`);
       step('#/kernels 旧链接仍可用（落到插件页）', afterAlias.includes('已安装'), afterAlias.join(' / '));
+
+      /* ---- 显示名规则：类型 + 最典型的两个扩展名（代码层面的名字不动）---- */
+      const names = (await js(`window.__khsTest.kernelNames()`)) || [];
+      const RULE = /^(图片|文档|音视频|音频|视频|表格|文本|矢量图|压缩包|数据)( |$)/;
+      const badName = names.filter((n) => !RULE.test(n));
+      step(
+        '显示名遵循「类型 + 扩展名」规则',
+        names.length > 0 && badName.length === 0,
+        badName.length ? `不符合：${badName.join('、')}` : names.join(' / ')
+      );
+      step('显示名互不重复', new Set(names).size === names.length, `${new Set(names).size} 个唯一 / 共 ${names.length} 个`);
+      const codeNames = (await js(`window.__khsTest.kernelCodeNames()`)) || [];
+      step(
+        '代码层面的 id 与原名未被改动',
+        codeNames.length === names.length && codeNames.every((c) => c.id && !RULE.test(c.id)),
+        codeNames.map((c) => `${c.id}→${c.codeName}`).slice(0, 4).join('；')
+      );
+
+      /* ---- 「可安装」标签：真的去拉一次插件目录并渲染 ---- */
+      await js(
+        `(() => { const b = Array.from(document.querySelectorAll('#view .toolbar .btn')).find((x) => x.innerText.trim() === '可安装'); if (b) b.click(); })()`
+      );
+      await settle(5000);
+      const catalogRows = await js(`document.querySelectorAll('#view table tbody tr').length`);
+      const afterNames = (await js(`window.__khsTest.kernelNames()`)) || [];
+      // 联网时应有十几行；离线时目录拉不到、显示空状态也算通过（只报数量）
+      step(
+        '「可安装」标签能渲染（含目录拉取）',
+        catalogRows > 0,
+        `${catalogRows} 行；显示名仍符合规则=${afterNames.every((n) => RULE.test(n))}，唯一=${new Set(afterNames).size === afterNames.length}`
+      );
     } catch (err) {
       step('界面层断言', false, String(err.message || err));
     }

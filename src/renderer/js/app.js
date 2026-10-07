@@ -474,6 +474,8 @@ function makeContext(viewId) {
     openPathSafe,
     patchSettings,
     toggleTheme,
+    /** 只重取内核列表（不重新探测）——插件目录拉到后显示名可能变，用它轻量同步 */
+    loadKernels,
     addPendingFiles,
     removePendingFile,
     clearPending,
@@ -1052,6 +1054,13 @@ function installTestHooks() {
 
     /** 可用格式清单（由内核能力派生，装/卸插件后会变）——用于验证格式缓存刷新 */
     formats: () => bridge.kernels.formats(),
+
+    /** 内核在界面上的显示名（软件层面的命名：类型 + 最典型的两个扩展名） */
+    kernelNames: () => (state.pick('kernels') || []).map((k) => k && k.name).filter(Boolean),
+
+    /** 内核的代码层面原名与 id，用来核对「改名只影响界面」 */
+    kernelCodeNames: () =>
+      (state.pick('kernels') || []).map((k) => k && { id: k.id, codeName: k.codeName }).filter(Boolean),
 
     /** 转换页当前渲染出的目标格式下拉项（空值过滤掉） */
     targetOptions: () =>

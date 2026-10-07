@@ -167,7 +167,8 @@ export async function mount(host, ctx) {
     return list.filter((p) => {
       if (vs.state !== 'all' && p.state !== vs.state) return false;
       if (!q) return true;
-      const hay = [p.id, p.name, p.description, (p.tags || []).join(' '), (p.ops || []).join(' '), (p.external || []).join(' ')]
+      // 搜索同时命中显示名与代码层面的原名 / id，两种叫法都能搜到
+      const hay = [p.id, p.name, p.displayName, p.description, (p.tags || []).join(' '), (p.ops || []).join(' '), (p.external || []).join(' ')]
         .join(' ')
         .toLowerCase();
       return hay.includes(q);
@@ -250,7 +251,7 @@ export async function mount(host, ctx) {
         h('td', null, statusBadge(meta.label, meta.tone)),
         h('td', { class: 'truncate' },
           h('div', null,
-            h('span', { textContent: p.name || p.id }),
+            h('span', { textContent: p.displayName || p.name || p.id }),
             h('span.dim', { textContent: ' ' }),
             h('span.mono.dim', { textContent: p.id })
           ),
@@ -306,6 +307,10 @@ export async function mount(host, ctx) {
     try {
       data = await window.khs.plugins.list({ refresh: Boolean(refresh) });
       renderCatalog();
+      // 首次拉到插件目录时，判重集合才完整（可能补上限定名），内核列表要轻量重取一次
+      if (data && data.namesChanged && typeof ctx.loadKernels === 'function') {
+        await ctx.loadKernels({ silent: true });
+      }
     } catch (err) {
       ctx.reportError('读取插件目录失败', ctx.wrapError(err));
     } finally {
@@ -334,7 +339,7 @@ export async function mount(host, ctx) {
 
   async function installOne(p, isUpdate) {
     const verb = isUpdate ? '重新安装' : '安装';
-    const ok = await ctx.modal.confirm(`${verb}插件「${p.name || p.id}」？`, {
+    const ok = await ctx.modal.confirm(`${verb}插件「${p.displayName || p.name || p.id}」？`, {
       okLabel: verb,
       detail: [
         `版本：${p.version}`,
@@ -365,7 +370,7 @@ export async function mount(host, ctx) {
   }
 
   async function uninstallOne(p) {
-    const ok = await ctx.modal.confirm(`卸载插件「${p.name || p.id}」？`, {
+    const ok = await ctx.modal.confirm(`卸载插件「${p.displayName || p.name || p.id}」？`, {
       okLabel: '卸载',
       danger: true,
       detail: `会删除 ${p.dir || p.id} 目录（${humanMB(p.installedBytes || p.size)}）。\n对应的内核会立刻从转换页消失。`,
