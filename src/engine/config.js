@@ -39,6 +39,11 @@ const DEFAULTS = {
   pluginGitConfig: [],
   /** 已铺过种子的插件 id，用户删掉后不再塞回来 */
   seededPlugins: [],
+  /**
+   * 自动补装插件依赖时优先使用的 pip 源（2.1.0）。
+   * 默认国内镜像；装上失败会自动回退到 PyPI 官方源。
+   */
+  pipIndexUrl: 'https://pypi.tuna.tsinghua.edu.cn/simple',
 };
 
 class Settings {

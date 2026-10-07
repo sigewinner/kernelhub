@@ -329,6 +329,9 @@ export async function mount(host, ctx) {
               () => installOne(p, false), !canInstall || isInstalled),
             iconButton('retry', `重新安装 / 更新到 ${p.version}`,
               () => installOne(p, true), !canInstall || !isInstalled),
+            // 2.1.0：装了但内核起不来（多半是缺依赖）时，给一个手动补装的入口
+            iconButton('download', '检查并自动补装该插件的依赖（Python 模块）',
+              () => runDepsInstall(p.id), !isInstalled),
             iconButton('trash', `卸载 ${p.id}`, () => uninstallOne(p), !isInstalled),
             iconButton('external', '在资源管理器中打开该插件目录', () => revealOne(p), !isInstalled)
           )
@@ -414,10 +417,93 @@ export async function mount(host, ctx) {
       }
       renderProgress({ phase: 'done', percent: 100, message: `${p.id} 已就绪` });
       await afterChange(p.id, verb);
+      // 2.1.0：装完顺手查一次依赖，缺东西就问用户要不要自动装
+      await promptInstallDeps(p.id, res && res.kernel);
     } catch (err) {
       ctx.reportError(`${verb}异常`, ctx.wrapError(err));
     } finally {
       setTimeout(() => renderProgress(null), 4000);
+    }
+  }
+
+  /* ------------------------------------------- 依赖检测与自动补装（2.1.0） */
+
+  /**
+   * 查这个插件缺什么依赖；缺了就用对话框问用户是否自动安装。
+   * Python 依赖可以自动装（装进插件自己的 vendor），外部程序只能给出安装提示。
+   */
+  async function promptInstallDeps(id, kernel) {
+    let info = null;
+    try {
+      info = await window.khs.plugins.deps(id);
+    } catch {
+      return;
+    }
+    if (!info || !info.ok) return;
+    const missing = info.missing || [];
+    const external = info.external || [];
+    if (!missing.length && !external.length) return;
+
+    const lines = [];
+    if (missing.length) {
+      lines.push(`缺少 Python 模块：${missing.join('、')}`);
+      lines.push(`将安装的包：${(info.packages || []).join(' ')}`);
+      lines.push(`安装位置：${info.vendorDir}（插件自带依赖目录，卸载时会一并删除）`);
+      lines.push(`解释器：${info.python || '未找到'}`);
+    }
+    if (external.length) {
+      lines.push('');
+      lines.push(`另外还需要系统里已有：${external.join(' / ')}（外部程序无法用 pip 安装）`);
+    }
+    if (info.installHint) {
+      lines.push('');
+      lines.push(String(info.installHint));
+    }
+
+    const actions = [];
+    if (missing.length) {
+      actions.push({
+        label: '用镜像安装',
+        primary: true,
+        run: () => runDepsInstall(id, info.indexPreferred),
+      });
+      actions.push({ label: '从官方源安装', run: () => runDepsInstall(id, info.indexOfficial) });
+    }
+    actions.push({ label: missing.length ? '稍后手动处理' : '知道了', kind: 'ghost' });
+
+    ctx.modal.open({
+      title: `${kernel && kernel.name ? kernel.name : id} 缺少依赖`,
+      subtitle: id,
+      body: ctx.modal.codeBlock(lines.join('\n'), { lang: missing.length ? '缺少依赖' : '需要外部程序' }),
+      actions,
+    });
+  }
+
+  /** 真正执行补装：pip 输出会经 evt:plugin:progress 逐行回到进度条上 */
+  async function runDepsInstall(id, indexUrl) {
+    renderProgress({ phase: 'deps', percent: 0, message: `正在安装 ${id} 的依赖…` });
+    try {
+      const res = await window.khs.plugins.installDeps({ id, indexUrl });
+      if (!res || !res.ok) {
+        const msg = (res && res.error) || (res && res.tried ? `已尝试 ${res.tried.join(' / ')}` : '未知错误');
+        renderProgress({ phase: 'error', percent: 0, message: `依赖安装失败：${msg}` });
+        ctx.toast.error('依赖安装失败', msg);
+        return;
+      }
+      renderProgress({
+        phase: 'done',
+        percent: 100,
+        message: res.alreadyOk ? '依赖已齐全' : `依赖已安装：${(res.installed || []).join(' ')}`,
+      });
+      ctx.toast.success(res.alreadyOk ? '依赖已齐全' : '依赖安装完成', {
+        text: res.indexUsed ? `来源 ${res.indexUsed}` : id,
+      });
+      await ctx.refreshKernels({ announce: false });
+      await reload(false);
+    } catch (err) {
+      ctx.reportError('依赖安装异常', ctx.wrapError(err));
+    } finally {
+      setTimeout(() => renderProgress(null), 5000);
     }
   }
 

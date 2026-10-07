@@ -185,13 +185,16 @@ function numberControl(spec, setter) {
   });
 
   const hint = rangeHint(spec.min, spec.max, spec.step);
+  if (hint && input) input.title = hint;
+  if (hint && slider) slider.title = hint;
+  // 2.1.0：取值范围/步长不再单独占一行小字，交给 buildField 挂到 title 上
   const wrap = h('div.col.gap-2', null,
-    h('div.num-row', null, input, slider),
-    hint ? h('div.field__hint', { textContent: hint }) : null
+    h('div.num-row', null, input, slider)
   );
 
   return {
     el: wrap,
+    tip: hint,
     get: () => normalize(input.value),
     set: (v) => {
       const n = normalize(v);
@@ -382,15 +385,16 @@ export function createParamPanel(host, options = {}) {
 
   const basicBody = h('div.param-grid');
   const advancedBody = h('div.param-grid');
-  const hiddenNotice = h('div.field__hint.hidden');
+  // 2.1.0：原「N 个参数不适用于当前组合，已自动隐藏」也是小字，改为挂在区块标题的悬停提示上
+  const hiddenTip = { count: 0 };
+  const basicTitle = h('div.param-section__title', null, h('span', { textContent: '基础参数' }));
   const emptyState = h('div.empty', { style: { padding: 'var(--sp-4) 0' } },
-    h('div.empty__title', { textContent: '当前组合没有可调参数' }),
-    h('div.empty__text', { textContent: '内核为这个「操作 × 源格式 → 目标格式」组合声明的参数为空，可直接开始转换。' })
+    h('div.empty__title', { textContent: '当前组合没有可调参数' })
   );
 
   const root = h('div.param-panel');
   const basicSection = h('div.param-section', null,
-    h('div.param-section__title', null, h('span', { textContent: '基础参数' }), hiddenNotice),
+    basicTitle,
     basicBody
   );
   const advancedSection = h('div.param-section', null,
@@ -472,12 +476,9 @@ export function createParamPanel(host, options = {}) {
         hiddenCount += 1;
       }
     }
-    if (hiddenCount > 0) {
-      hiddenNotice.textContent = `${hiddenCount} 个参数不适用于当前组合，已自动隐藏`;
-      hiddenNotice.classList.remove('hidden');
-    } else {
-      hiddenNotice.classList.add('hidden');
-    }
+    // 2.1.0：隐藏参数的数量改成悬停提示（原先是区块标题旁边的一行小字）
+    hiddenTip.count = hiddenCount;
+    basicTitle.title = hiddenCount > 0 ? `${hiddenCount} 个参数不适用于当前组合，已自动隐藏` : '';
   }
 
   function setAdvancedOpen(open) {
@@ -561,9 +562,21 @@ function buildField(spec, control) {
     spec.required ? h('span.field__req', { title: '必填', textContent: '*' }) : null,
     h('span.badge.badge--mono', { textContent: String(spec.type || 'string') })
   );
+  /**
+   * 2.1.0：不再在字段下方显示说明小字，改成把说明挂到整块的 title 上
+   * （鼠标悬停才出现）。用户要求「高级里的说明文字删干净、悬停再看」。
+   */
   const field = h('div.field.param-field', null, label, control.el);
-  if (spec.description) {
-    field.appendChild(h('div.field__hint', { textContent: spec.description }));
+  const tips = [];
+  if (spec.description) tips.push(String(spec.description));
+  const rangeTip = control.tip || '';
+  if (rangeTip) tips.push(rangeTip);
+  if (tips.length) {
+    const title = tips.join('\n');
+    field.title = title;
+    // 控件本身也带上，避免悬停在输入框上时看不到（title 不会从子元素冒泡）
+    const inner = control.el.querySelector('input, select, textarea, button');
+    if (inner && !inner.title) inner.title = title;
   }
   return field;
 }

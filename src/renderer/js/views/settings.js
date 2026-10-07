@@ -279,6 +279,26 @@ export async function mount(host, ctx) {
       h('div.row.gap-2', null, addBtn)
     ));
 
+    // 2.1.0：自动补装插件依赖时用的 pip 源
+    const pipIndexInput = h('input.input.input--mono', {
+      type: 'text',
+      value: String((settings && settings.pipIndexUrl) || ''),
+      placeholder: 'https://pypi.tuna.tsinghua.edu.cn/simple',
+      'aria-label': 'pip 源',
+    });
+    pipIndexInput.addEventListener('change', () =>
+      save({ pipIndexUrl: pipIndexInput.value.trim() }, '已保存 pip 源')
+    );
+    paneEl.appendChild(group('依赖安装',
+      h('div.field', null,
+        h('label.label', { textContent: 'pip 源' }),
+        pipIndexInput
+      ),
+      h('div.field__hint', {
+        textContent: '插件缺 Python 依赖时的自动安装源（默认清华镜像）。装不上会自动回退到 PyPI 官方源。',
+      })
+    ));
+
     paneEl.appendChild(group('扫描',
       h('label.check-row', null, autoScan, h('span', { textContent: '启动时自动扫描内核' })),
       h('div.field__hint', { textContent: '关闭后启动不会重新探测依赖，需要在「插件 → 已安装」里手动点「重新扫描」。' }),

@@ -431,6 +431,12 @@
   gap: var(--sp-2);
   z-index: 70;
   pointer-events: none;
+  /**
+   * 2.1.0：让通知整卡从右侧屏幕外滑入。
+   * 之前只位移 20px，肉眼几乎看不出「从右往左」；改成按卡片自身宽度整张滑入，
+   * 配合这里的 overflow: hidden 在宿主右边界裁掉，观感就是「从屏幕右边推进来」。
+   */
+  overflow: hidden;
 }
 
 .toast {
@@ -442,12 +448,12 @@
   padding: var(--sp-3);
   background: var(--c-paper);
   border: var(--line);
-  /* 进场：从右侧滑入（宿主锚在右下角，从右边推进来最贴合视线的来向） */
+  /* 进场：整卡从右侧屏幕外滑入（宿主 overflow: hidden，在右边界裁切） */
   animation: toast-in var(--t-slow) var(--e-out) both;
 }
 
 .toast--leaving {
-  /* 出场：向右滑回去。用 animation 而不是 transition，
+  /* 出场：整卡向右滑回屏幕外。用 animation 而不是 transition，
      这样嵌套在里面的内容不需要各自写过渡，一次动画整体生效 */
   animation: toast-out var(--t-base) var(--e-in-out) both;
 }
@@ -455,7 +461,7 @@
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translateX(var(--d-slide));
+    transform: translateX(110%);
   }
   to {
     opacity: 1;
@@ -470,7 +476,7 @@
   }
   to {
     opacity: 0;
-    transform: translateX(var(--d-slide));
+    transform: translateX(110%);
   }
 }
 

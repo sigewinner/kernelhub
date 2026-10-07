@@ -136,7 +136,6 @@ export async function mount(host, ctx) {
   /* --- 右：任务摘要 --- */
   const chosenValueEl = h('span.summary-line__v', { textContent: '—' });
   const outputValueEl = h('span.summary-line__v', { textContent: '与源文件同目录' });
-  const lastResultEl = h('div.field__hint');
   const progressHost = h('div.panel.hidden');
 
   const sameDirCheck = h('input.check', { type: 'checkbox', checked: true });
@@ -164,7 +163,6 @@ export async function mount(host, ctx) {
       ),
       h('label.check-row', null, sameDirCheck, h('span', { textContent: '与源文件同目录' }))
     ),
-    lastResultEl,
     progressHost
   );
 
@@ -190,13 +188,11 @@ export async function mount(host, ctx) {
   });
 
   const kernelSelect = h('select.select', { 'aria-label': '使用内核' });
-  const kernelHint = h('div.field__hint');
   const candidateFlow = h('div.tagflow');
   const kernelSection = h('div.param-section', null,
     h('div.param-section__title', null, h('span', { textContent: '使用内核' })),
     h('div.field', null, h('label.label', { textContent: '内核' }), h('div.selectwrap', null, kernelSelect)),
-    candidateFlow,
-    kernelHint
+    candidateFlow
   );
 
   const outDirInput = h('input.input.input--mono', {
@@ -231,12 +227,15 @@ export async function mount(host, ctx) {
     },
   });
   const outDirSection = h('div.param-section', null,
-    h('div.param-section__title', null, h('span', { textContent: '输出目录' })),
+    h('div.param-section__title', null, h('span', {
+      textContent: '输出目录',
+      // 2.1.0：说明不再占一行小字，改为悬停提示
+      title: '勾选「与源文件同目录」时，每个产物留在各自源文件所在目录。',
+    })),
     h('div.field', null,
       h('label.label', { textContent: '目录' }),
       h('div.path-row', null, outDirInput, outDirPickBtn)
-    ),
-    h('div.field__hint', { textContent: '勾选「与源文件同目录」时，每个产物留在各自源文件所在目录。' })
+    )
   );
 
   const paramHost = h('div');
@@ -250,7 +249,6 @@ export async function mount(host, ctx) {
   );
 
   const previewPre = h('pre', { textContent: '—' });
-  const previewNote = h('div.field__hint', { textContent: '还没有可预览的组合：先添加文件并选择目标格式。' });
   const previewCopyBtn = h('button.btn.btn--quiet.btn--sm', {
     type: 'button',
     title: '复制命令行',
@@ -270,8 +268,7 @@ export async function mount(host, ctx) {
       h('span.grow'),
       previewCopyBtn
     ),
-    h('div.codeblock.codeblock--wrap', null, h('div.codeblock__bar', null, h('span', { textContent: '只读 · 不会执行' })), previewPre),
-    previewNote
+    h('div.codeblock.codeblock--wrap', null, h('div.codeblock__bar', null, h('span', { textContent: '只读 · 不会执行' })), previewPre)
   );
 
   const resetBtn = h('button.btn', {
@@ -483,7 +480,8 @@ export async function mount(host, ctx) {
     }
     if (prev && !kernels.some((k) => k.id === prev)) vs.kernelId = '';
     kernelSelect.value = vs.kernelId;
-    kernelHint.textContent = kernels.length
+    // 2.1.0：原先「共 N 个可用内核…」那行小字改为悬停提示
+    kernelSelect.title = kernels.length
       ? `共 ${kernels.length} 个可用内核；指定内核后目标格式会按其能力收敛。`
       : '当前没有可用内核：到「插件」页安装插件，或在「已安装」里看依赖缺失的原因。';
   }
@@ -594,10 +592,9 @@ export async function mount(host, ctx) {
     const jobs = store.pick('jobs') || new Map();
     const run = ids.map((id) => jobs.get(id)).filter(Boolean);
 
-    clear(lastResultEl);
+    // 2.1.0：这里原先显示「添加文件后即可开始…」一类的提示小字，已按要求删掉；
+    // 任务摘要只留一行「上次结果」，其余实时数字都在右下角状态栏。
     if (!run.length) {
-      lastResultEl.textContent = filesHintText();
-      // 没有「上次结果」时也要把上一轮残留的数字清掉
       ctx.setStatusInfo(convertStatusInfo());
       return;
     }
@@ -609,7 +606,6 @@ export async function mount(host, ctx) {
     const ended = Math.max(...finished.map((j) => Number(j.finishedAt) || Date.now()));
     const elapsed = finished.length ? ` · 用时 ${((Math.max(0, ended - started)) / 1000).toFixed(1)} s` : '';
 
-    lastResultEl.textContent = filesHintText();
     ctx.setStatusInfo(convertStatusInfo({
       text: `上次结果：成功 ${done} · 失败 ${failed}${elapsed}`,
       tone: failed ? 'err' : 'ok',
@@ -624,14 +620,6 @@ export async function mount(host, ctx) {
     items.push(`${pending.length} 个待转换文件`);
     items.push(vs.sameDir ? '输出：与源文件同目录' : `输出：${vs.outDir || '源文件所在目录'}`);
     return items;
-  }
-
-  function filesHintText() {
-    const ready = (store.pick('kernels') || []).filter((k) => k.status === 'ready').length;
-    if (!ready) return '没有可用内核：请到「插件」页安装插件，或看「已安装」里依赖缺失的原因。';
-    if (!store.pick('pending').length) return '添加文件后即可开始：选核与参数由内核清单决定。';
-    if (!vs.dstFmt) return '当前操作下没有可用的目标格式。';
-    return '就绪：点「开始转换」提交到队列。';
   }
 
   function updateStart() {
@@ -667,9 +655,10 @@ export async function mount(host, ctx) {
     progressHost.appendChild(h('div.progress', null,
       h('div.progress__fill', { style: { width: `${Math.max(2, value * 100)}%` } })
     ));
-    progressHost.appendChild(h('div.field__hint', {
-      textContent: `${job.progressMessage || (job.state === 'queued' ? '排队中…' : '执行中…')}${jobs.length > 1 ? ` · 另有 ${jobs.length - 1} 个` : ''}`,
-    }));
+    // 2.1.0：进度文案不再占一行小字，改为整块的悬停提示
+    progressHost.title = `${job.progressMessage || (job.state === 'queued' ? '排队中…' : '执行中…')}${
+      jobs.length > 1 ? ` · 另有 ${jobs.length - 1} 个` : ''
+    }`;
   }
 
   /* -------------------------------------------------------------- 预览 */
@@ -698,14 +687,14 @@ export async function mount(host, ctx) {
     previewPre.classList.remove('accent');
     if (!p) {
       previewPre.textContent = '—';
-      previewNote.textContent = '还没有可预览的组合：先添加文件并选择目标格式。';
+      previewPre.title = '还没有可预览的组合：先添加文件并选择目标格式。';
       previewCopyBtn.disabled = true;
       return;
     }
     if (p.ok === false) {
       previewPre.textContent = `${p.code || 'ERROR'}：${p.message || '未知原因'}`;
       previewPre.classList.add('accent');
-      previewNote.textContent = '预览失败不影响其它配置。';
+      previewPre.title = '预览失败不影响其它配置。';
       previewCopyBtn.disabled = true;
       return;
     }
@@ -717,7 +706,8 @@ export async function mount(host, ctx) {
     }
     previewPre.textContent = lines.length ? lines.join(' ') : '（该内核没有可展开的命令行）';
     const base = p.note ? String(p.note) : `内核 ${orDash(p.kernel && (p.kernel.name || p.kernel.id))} · 输出 ${(p.outputs || []).length} 个文件`;
-    previewNote.textContent = store.pick('pending').length > 1
+    // 2.1.0：原先预览下方那行说明小字改为悬停提示
+    previewPre.title = store.pick('pending').length > 1
       ? `${base}（预览取列表第一个文件为例；队列会按每个文件各自的源格式逐个执行）`
       : base;
     previewCopyBtn.disabled = !lines.length;

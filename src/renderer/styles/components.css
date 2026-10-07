@@ -179,7 +179,27 @@
   color: var(--c-ink);
   font-family: var(--font-sans);
   font-size: var(--fs-13);
-  transition: border-color var(--t-fast) ease-out;
+  transition: border-color var(--t-fast) var(--e-in-out), background var(--t-fast) var(--e-in-out);
+  /**
+   * 2.1.0：让原生下拉面板跟随主题。
+   * Chromium 会按 color-scheme 画下拉列表 —— 不声明的话，深色主题下会弹出一个
+   * 刺眼的白色系统面板，与整体风格完全脱节。这是不重造轮子就能对上主题的做法。
+   */
+  color-scheme: light;
+}
+
+[data-theme="dark"] .select {
+  color-scheme: dark;
+}
+
+/* 下拉项：即便面板由系统绘制，这里也给一层主题底色兜底 */
+.select option {
+  background: var(--c-paper);
+  color: var(--c-ink);
+}
+
+.select:hover:not([disabled]) {
+  border-color: var(--c-ink-3);
 }
 
 .input:focus,
@@ -510,7 +530,12 @@
 }
 
 .progress-label {
-  flex: none;
+  /* pip 的输出行可能很长：允许收缩并省略，别把进度条挤出容器 */
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .progress__pct {

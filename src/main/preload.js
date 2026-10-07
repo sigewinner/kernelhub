@@ -112,6 +112,10 @@ const api = {
     openDir: () => invoke('plugins:openDir'),
     reveal: (id) => invoke('plugins:reveal', id),
     settings: () => invoke('plugins:settings'),
+    /** 查该插件缺哪些依赖（Python 模块 / 外部程序）——2.1.0 */
+    deps: (id) => invoke('plugins:deps', id),
+    /** 把缺的 Python 依赖装进插件自己的 vendor 目录；indexUrl 可选（镜像 / 官方源）——2.1.0 */
+    installDeps: (payload) => invoke('plugins:installDeps', payload),
   },
 
   /* -- 计划 --------------------------------------------------------------- */

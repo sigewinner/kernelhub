@@ -25,6 +25,7 @@ const {
   resolveSeedPluginsDir,
   ensureUserHub,
   pluginsDirOf,
+  pluginVendorDirOf,
 } = require('../engine/paths');
 const { Registry } = require('../engine/registry');
 const { Hub } = require('../engine/hub');
@@ -33,6 +34,7 @@ const { JobQueue, STATE } = require('../engine/queue');
 const catalog = require('../engine/catalog');
 const pluginName = require('../shared/pluginName');
 const { clearProbeCache } = require('../engine/python');
+const deps = require('../engine/deps');
 const { formatOfPath, basenameOf, extOf, CKP_VERSION } = require('../shared/protocol');
 const { humanSize } = catalog;
 
@@ -582,6 +584,83 @@ function registerIpc() {
 
   handle('plugins:verify', () => pluginStore.verifyAll());
 
+  /**
+   * 插件的 Python 依赖清单。
+   * 优先用已装清单里的 runtime.requires；插件还没装上时退回目录里的声明。
+   */
+  function pluginRequires(id) {
+    const entry = registry.get(id);
+    const fromManifest = entry && entry.manifest && entry.manifest.runtime ? entry.manifest.runtime.requires : null;
+    if (Array.isArray(fromManifest)) return fromManifest;
+    const cat = pluginStore.cachedCatalog();
+    const row = cat && (cat.plugins || []).find((p) => p.id === id);
+    return (row && row.requires) || [];
+  }
+
+  /** 目录里声明的外部程序依赖（pip 装不了，只能在提示里告诉用户） */
+  function pluginExternal(id) {
+    const cat = pluginStore.cachedCatalog();
+    const row = cat && (cat.plugins || []).find((p) => p.id === id);
+    return (row && row.external) || [];
+  }
+
+  /**
+   * 查这个插件缺哪些依赖（2.1.0）。
+   * 界面在装完插件后会调它，缺东西就弹窗问用户要不要自动装。
+   */
+  handle('plugins:deps', (id) => {
+    const pid = String(id || '');
+    const requires = pluginRequires(pid);
+    const vendorDir = pluginVendorDirOf(registry.hubRoot, pid);
+    const probe = deps.probeMissing({ requires, vendorDir });
+    const entry = registry.get(pid);
+    return {
+      ok: true,
+      id: pid,
+      requires,
+      missing: probe.missing,
+      packages: probe.packages,
+      python: probe.python || '',
+      vendorDir,
+      external: pluginExternal(pid),
+      installHint: (entry && entry.manifest && entry.manifest.installHint) || '',
+      /** 界面要给用户两个选择：镜像 / 官方 */
+      indexPreferred: settings.get('pipIndexUrl', '') || '',
+      indexOfficial: 'https://pypi.org/simple',
+    };
+  });
+
+  /**
+   * 把缺的 Python 依赖装进该插件自己的 vendor 目录（2.1.0）。
+   * 装进 vendor 而不是全局 site-packages：符合「每个插件自带依赖、互不干扰」的设计，
+   * 卸载插件时连带删掉，不留垃圾。pip 输出逐行回吐给界面。
+   */
+  handle('plugins:installDeps', async ({ id, indexUrl } = {}) => {
+    const pid = String(id || '');
+    const vendorDir = pluginVendorDirOf(registry.hubRoot, pid);
+    try {
+      fs.mkdirSync(vendorDir, { recursive: true });
+    } catch {
+      /* 目录已存在或不可建，交给 pip 报错 */
+    }
+    const probe = deps.probeMissing({ requires: pluginRequires(pid), vendorDir });
+    if (!probe.missing.length) {
+      return { ok: true, alreadyOk: true, id: pid, kernel: registry.get(pid) ? catalog.kernelView(registry.get(pid)) : null };
+    }
+    pluginProgress({ phase: 'deps', percent: 0, message: `准备安装 ${probe.packages.length} 个依赖…` });
+    const result = await deps.installMissing({
+      python: probe.python,
+      target: vendorDir,
+      packages: probe.packages,
+      preferredIndex: indexUrl || settings.get('pipIndexUrl', ''),
+      onIndex: (info) => pluginProgress({ phase: 'deps', percent: 0, message: `使用 ${info.label || info.index} 安装依赖…` }),
+      onLine: (line) => pluginProgress({ phase: 'deps', percent: 0, message: line }),
+    });
+    // 装了新包必须清掉模块探测缓存，否则重新扫描还是「缺模块」
+    clearProbeCache();
+    return settlePluginChange({ ...result, id: pid }, pid);
+  });
+
   handle('plugins:openDir', () => {
     const dir = pluginStore.pluginsDir;
     try {
@@ -609,6 +688,8 @@ function registerIpc() {
     bundleUrl: pluginStore.bundleUrlTemplate,
     pluginsDir: pluginStore.pluginsDir,
     hubRoot: pluginStore.hubRoot,
+    /** 自动补装依赖时优先用的 pip 源（2.1.0） */
+    pipIndexUrl: settings.get('pipIndexUrl', ''),
   }));
 
   /* -- 计划 / 参数 --------------------------------------------------------- */
@@ -1128,6 +1209,23 @@ async function runSelfTest() {
 
       const installedRows = await js(`document.querySelectorAll('#view table tbody tr').length`);
       step('「已安装」标签渲染出内核列表', installedRows >= 4, `${installedRows} 行`);
+
+      /* ---- 2.1.0：插件依赖检测（自动补装功能的前半段） ---- */
+      const depsMissing = await js(`window.khs.plugins.deps('pillow-image')`);
+      step(
+        '依赖检测能报出缺什么（未装的插件按目录声明探测）',
+        Boolean(depsMissing && depsMissing.ok && Array.isArray(depsMissing.missing)) &&
+          depsMissing.requires.includes('PIL'),
+        depsMissing
+          ? `requires=${(depsMissing.requires || []).join(',') || '（无）'} · missing=${(depsMissing.missing || []).join(',') || '（无）'} · 镜像=${depsMissing.indexPreferred}`
+          : '取不到依赖信息'
+      );
+      const depsSeeded = await js(`window.khs.plugins.deps('data-table')`);
+      step(
+        '依赖齐全的插件不会误报',
+        Boolean(depsSeeded && depsSeeded.ok && (depsSeeded.missing || []).length === 0),
+        depsSeeded ? `missing=${(depsSeeded.missing || []).join(',') || '（无）'}` : '取不到依赖信息'
+      );
 
       /* ---- 2.0.4：开启动画、侧栏指示块、右下角实时信息、页头只剩标题 ---- */
 
