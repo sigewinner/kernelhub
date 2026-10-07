@@ -1,0 +1,634 @@
+/**
+ * views.css —— 视图级版面
+ *
+ * 约定：视图只使用这里定义的类 + components.css 的通用组件类。
+ * 12 栏栅格：.grid12 容器，子元素用 .c3/.c4/.c5/.c7/.c8/.c9/.c12（4/8 或 5/7，不用 50/50）。
+ */
+
+/* ============================================================== 视图通用 */
+
+.view-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.view-crumb {
+  font-size: var(--fs-12);
+  color: var(--c-ink-3);
+}
+
+.view-title {
+  font-size: var(--fs-28);
+  font-weight: 400;
+  line-height: var(--lh-tight);
+  letter-spacing: -0.01em;
+}
+
+.view-sub {
+  font-size: var(--fs-13);
+  color: var(--c-ink-2);
+  max-width: 96ch;
+}
+
+.view-rule {
+  height: 1px;
+  background: var(--c-rule);
+  margin-top: var(--sp-4);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.toolbar__right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-left: auto;
+}
+
+.toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.toolbar__sep {
+  width: 1px;
+  height: 20px;
+  background: var(--c-rule);
+  margin: 0 var(--sp-1);
+}
+
+.grid12 {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--sp-5);
+}
+
+.c3 { grid-column: span 3; }
+.c4 { grid-column: span 4; }
+.c5 { grid-column: span 5; }
+.c7 { grid-column: span 7; }
+.c8 { grid-column: span 8; }
+.c9 { grid-column: span 9; }
+.c12 { grid-column: span 12; }
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  border-top: 1px solid var(--c-rule);
+  padding-top: var(--sp-3);
+  min-width: 0;
+}
+
+.panel__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.panel__title {
+  font-size: var(--fs-16);
+  font-weight: 500;
+}
+
+.panel__sub {
+  font-size: var(--fs-12);
+  color: var(--c-ink-3);
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--c-rule);
+  font-size: var(--fs-16);
+  font-weight: 500;
+}
+
+/* ================================================================ 转换 */
+
+.filelist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-height: 160px;
+}
+
+.filelist__items {
+  display: flex;
+  flex-direction: column;
+}
+
+.filelist__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  height: var(--h-row);
+  border-bottom: 1px solid var(--c-rule-2);
+  transition: background var(--t-fast) ease-out;
+}
+
+.filelist__row:hover {
+  background: var(--c-hover);
+}
+
+.filelist__idx {
+  flex: none;
+  width: 24px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  color: var(--c-ink-3);
+}
+
+.filelist__meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+}
+
+.filelist__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-13);
+}
+
+.filelist__size {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  color: var(--c-ink-2);
+}
+
+.filelist__fmt {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  color: var(--c-ink-3);
+}
+
+.filelist__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--fs-12);
+  color: var(--c-ink-2);
+}
+
+.filelist[data-drag="true"],
+.dropzone[data-drag="true"] {
+  outline: 2px solid var(--c-ink);
+  outline-offset: -2px;
+}
+
+.summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.summary-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  font-size: var(--fs-13);
+}
+
+.summary-line__k {
+  flex: none;
+  min-width: 72px;
+  font-size: var(--fs-12);
+  color: var(--c-ink-3);
+}
+
+.summary-line__v {
+  min-width: 0;
+  word-break: break-word;
+}
+
+/* ================================================================= 队列 */
+
+.joblog {
+  margin: var(--sp-2) 0 var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--line);
+  background: var(--c-paper-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  line-height: var(--lh-snug);
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.jobrow {
+  cursor: pointer;
+}
+
+.jobrow__progress {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.jobrow__pct {
+  flex: none;
+  width: 36px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  color: var(--c-ink-2);
+}
+
+.rowactions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  justify-content: flex-end;
+}
+
+/* ================================================================= 内核 */
+
+.kernel-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kernel-name__id {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  color: var(--c-ink-3);
+}
+
+.caps-table td:first-child,
+.params-table td:first-child {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+}
+
+.matrix-cell {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  color: var(--c-ink-2);
+  word-break: break-word;
+}
+
+/* ================================================================= 格式 */
+
+/* 长表格限制高度并自带滚动，保证「下方面板」始终在视野内 */
+.tablewrap {
+  max-height: 46vh;
+  overflow: auto;
+  border-bottom: 1px solid var(--c-rule);
+}
+
+/* 表头在滚动容器里吸顶，长表格滚动时列标题不会跑掉 */
+.tablewrap .table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--c-paper);
+  z-index: 1;
+}
+
+.matrix-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  border-top: 1px solid var(--c-rule);
+  padding-top: var(--sp-3);
+}
+
+/* ================================================================= 协议 */
+
+.toc {
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  max-height: 72vh;
+  overflow: auto;
+}
+
+.toc__item {
+  display: block;
+  width: 100%;
+  padding: var(--sp-1) 0 var(--sp-1) var(--sp-2);
+  border-left: 2px solid transparent;
+  color: var(--c-ink-2);
+  font: inherit;
+  font-size: var(--fs-12);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.toc__item:hover {
+  color: var(--c-ink);
+}
+
+.toc__item--2 { padding-left: var(--sp-4); }
+.toc__item--3 { padding-left: var(--sp-6); }
+
+.toc__item[aria-current="true"] {
+  border-left-color: var(--c-accent);
+  color: var(--c-ink);
+}
+
+.doc {
+  max-width: 76ch;
+  font-size: var(--fs-13);
+  line-height: var(--lh-normal);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.doc h1 {
+  font-size: var(--fs-28);
+  font-weight: 400;
+}
+
+.doc h2 {
+  font-size: var(--fs-20);
+  font-weight: 500;
+  margin-top: var(--sp-4);
+  padding-bottom: var(--sp-1);
+  border-bottom: 1px solid var(--c-rule-2);
+}
+
+.doc h3 {
+  font-size: var(--fs-16);
+  font-weight: 500;
+  margin-top: var(--sp-3);
+}
+
+.doc h4 {
+  font-size: var(--fs-14);
+  font-weight: 500;
+}
+
+.doc ul,
+.doc ol {
+  padding-left: var(--sp-5);
+}
+
+.doc li {
+  margin: 2px 0;
+}
+
+.doc blockquote {
+  border-left: 2px solid var(--c-rule);
+  padding-left: var(--sp-3);
+  color: var(--c-ink-2);
+}
+
+.doc pre {
+  margin: 0;
+  padding: var(--sp-3);
+  border: var(--line);
+  background: var(--c-paper-2);
+  overflow: auto;
+}
+
+.doc code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+}
+
+.doc p code,
+.doc li code,
+.doc td code {
+  border: 1px solid var(--c-rule-2);
+  padding: 0 4px;
+}
+
+.doc table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.doc th {
+  text-align: left;
+  font-size: var(--fs-12);
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--c-ink-3);
+  border-bottom: 1px solid var(--c-rule);
+  padding: var(--sp-1) var(--sp-3) var(--sp-1) 0;
+}
+
+.doc td {
+  border-bottom: 1px solid var(--c-rule-2);
+  padding: var(--sp-1) var(--sp-3) var(--sp-1) 0;
+  vertical-align: top;
+}
+
+/* ================================================================= 设置 */
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--sp-5);
+}
+
+.settings-nav {
+  grid-column: span 3;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-nav__item {
+  display: block;
+  height: 32px;
+  line-height: 32px;
+  padding: 0 var(--sp-3);
+  color: var(--c-ink);
+  font: inherit;
+  font-size: var(--fs-13);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--t-fast) ease-out, color var(--t-fast) ease-out;
+}
+
+.settings-nav__item:hover {
+  background: var(--c-hover);
+}
+
+.settings-nav__item[aria-current="page"] {
+  background: var(--c-ink);
+  color: var(--c-inverse);
+}
+
+.settings-pane {
+  grid-column: span 9;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-4);
+  border-bottom: 1px solid var(--c-rule-2);
+}
+
+.settings-group:last-child {
+  border-bottom: 0;
+}
+
+.settings-group__title {
+  font-size: var(--fs-16);
+  font-weight: 500;
+}
+
+.pathline {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.pathline__value {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.radiolist {
+  display: flex;
+  gap: var(--sp-5);
+}
+
+.radio {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-13);
+  cursor: pointer;
+}
+
+/* 单选：直角方块 + 选中时内嵌实心小方块。
+   不能只用 background 填充 —— 深色主题下 --c-ink 是白色、--c-paper 是近黑，
+   而「填充色 = 主文字色」在两种主题里都可能与底色混淆，选中态会看不出来。
+   所以选中态一律用「描边变主色 + 内嵌实心块」，与底色无关。 */
+.radio input {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  border: var(--line);
+  background: transparent;
+  cursor: pointer;
+  transition: border-color var(--t-fast) ease-out;
+}
+
+.radio input:checked {
+  border-color: var(--c-ink);
+}
+
+.radio input:checked::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  background: var(--c-ink);
+}
+
+.radio input:focus-visible {
+  outline: 2px solid var(--c-ink);
+  outline-offset: 1px;
+}
+
+/* 勾选框同理：方框内嵌实心块，保证任意主题下都能看出选中状态 */
+.check:checked {
+  border-color: var(--c-ink);
+  background: transparent;
+}
+
+.check:checked::after {
+  content: "";
+  display: block;
+  width: 8px;
+  height: 8px;
+  margin: 3px;
+  background: var(--c-ink);
+}
+
+/* ================================================================= 日志 */
+
+.loglist {
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  line-height: var(--lh-snug);
+  border-top: 1px solid var(--c-rule);
+}
+
+.logrow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  padding: var(--sp-1) 0;
+  border-bottom: 1px solid var(--c-rule-2);
+}
+
+.logrow__time {
+  flex: none;
+  color: var(--c-ink-3);
+}
+
+.logrow__level {
+  flex: none;
+  width: 44px;
+  color: var(--c-ink-3);
+  text-transform: uppercase;
+}
+
+.logrow__msg {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.logrow--error .logrow__msg,
+.logrow--error .logrow__level {
+  color: var(--c-accent);
+}
+
+.logrow--warn .logrow__level {
+  color: var(--c-warn);
+}
+
+.footline {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding-top: var(--sp-2);
+  font-size: var(--fs-12);
+  color: var(--c-ink-3);
+}

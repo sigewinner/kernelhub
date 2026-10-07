@@ -1,0 +1,43 @@
+{
+  "name": "kernelhub-studio",
+  "productName": "KernelHub Studio",
+  "version": "1.0.0",
+  "description": "CKP 协议驱动的现代文件格式转换工作台（Electron + Node.js）",
+  "main": "src/main/main.js",
+  "type": "commonjs",
+  "private": true,
+  "author": "KernelHub",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node tools/launch.js",
+    "browser": "node tools/launch.js --browser",
+    "diag": "node tools/launch.js --diag",
+    "electron": "electron .",
+    "dev": "node tools/launch.js --dev",
+    "build": "node tools/build.js",
+    "build:dir": "node tools/build.js --dir",
+    "build:portable": "node tools/build.js --portable --mirror",
+    "build:mirror": "node tools/build.js --mirror",
+    "build:nohub": "node tools/build.js --no-hub",
+    "verify:package": "node tools/verify-package.js",
+    "verify:portable": "node tools/verify-portable.js",
+    "verify:window": "node tools/verify-window.js",
+    "install:local": "node tools/install-local.js",
+    "diag:launch": "node tools/diagnose-launch.js",
+    "integrity": "node tools/integrity.js",
+    "icon": "node tools/make-icon.js",
+    "probe": "node tools/probe.js",
+    "smoke": "node tools/smoke.js",
+    "audit": "node tools/audit.js",
+    "ui": "node tools/uiverify.js",
+    "devhost": "node tools/devserver.js --open",
+    "shot": "electron tools/shot.js"
+  },
+  "devDependencies": {
+    "electron": "^39.8.10",
+    "electron-builder": "^26.15.3"
+  }
+}

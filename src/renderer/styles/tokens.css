@@ -1,0 +1,91 @@
+/**
+ * tokens.css —— 设计令牌（瑞士风格 / International Typographic Style）
+ *
+ * 规范见 docs/ui-spec-swiss.md 第 1 节。这里只放「值」，不放任何选择器样式：
+ *   · 字体：无衬线一族到底（标题与正文同族，靠字重/字号拉开层级）
+ *   · 字号：固定 7 级，界面里不允许临时造新值
+ *   · 间距：8px 基准
+ *   · 颜色：黑白灰 + 唯一强调色（红），浅色为默认
+ *   · 形状：全部直角；唯一例外是状态圆点
+ *   · 动效：只允许颜色/背景/透明度的过渡，禁止位移与缩放
+ *
+ * 绝对禁止（写样式时请自查）：box-shadow / border-radius（状态点除外）/
+ * linear-gradient / backdrop-filter / transform: scale() 反馈 / 彩色按钮。
+ */
+
+:root {
+  /* ---------------------------------------------------------------- 字体 */
+  --font-sans: "Helvetica Neue", Helvetica, Inter, "Segoe UI", Arial,
+    "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+
+  /* ---------------------------------------------------------- 字号 / 行高 */
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --fs-16: 16px;
+  --fs-20: 20px;
+  --fs-28: 28px;
+  --fs-40: 40px;
+
+  --lh-tight: 1.15;
+  --lh-snug: 1.35;
+  --lh-normal: 1.5;
+
+  /* ---------------------------------------------------------------- 间距 */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+
+  /* ---------------------------------------------------------------- 形状 */
+  --r-0: 0px;
+  --r-dot: 50%;
+  --line: 1px solid var(--c-rule);
+
+  /* ---------------------------------------------------------------- 动效 */
+  --t-fast: 120ms;
+  --t-base: 180ms;
+
+  /* ------------------------------------------------------------ 版面尺寸 */
+  --h-topbar: 56px;
+  --h-control: 32px;
+  --h-row: 40px;
+  --w-sidebar: 200px;
+  --w-content-max: 1200px;
+
+  /* -------------------------------------------------- 颜色：浅色（默认） */
+  --c-paper: #ffffff;
+  --c-paper-2: #f4f4f4;
+  --c-ink: #000000;
+  --c-ink-2: #555555;
+  --c-ink-3: #8a8a8a;
+  --c-rule: #d8d8d8;
+  --c-rule-2: #ebebeb;
+  --c-accent: #e8271b;
+  --c-ok: #1f7a3f;
+  --c-warn: #8a6d00;
+  --c-inverse: #ffffff;
+  --c-hover: #f4f4f4;
+  --c-ink-hover: #222222;
+}
+
+[data-theme="dark"] {
+  --c-paper: #101010;
+  --c-paper-2: #1a1a1a;
+  --c-ink: #ffffff;
+  --c-ink-2: #a8a8a8;
+  --c-ink-3: #6e6e6e;
+  --c-rule: #2e2e2e;
+  --c-rule-2: #232323;
+  --c-accent: #ff3b30;
+  --c-ok: #5fbf7f;
+  --c-warn: #c9a227;
+  --c-inverse: #101010;
+  --c-hover: #1a1a1a;
+  --c-ink-hover: #e6e6e6;
+}

@@ -1,0 +1,29 @@
+# 依赖与构建产物
+node_modules/
+release/
+dist/
+out/
+build/*.ico
+build/*.png
+.electron-cache/
+*.blockmap
+builder-debug.yml
+
+# 运行期产物（内核输出、任务落盘、自检/验收中间结果）
+.smoke-out/
+.ui-out/
+.audit-tmp/
+.devhost-port.json
+.mkshots-port.json
+.shot-kernel-port.json
+.launch-port.json
+examples/
+*.log
+launch-err.txt
+launch-out.txt
+
+# 编辑器与系统
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

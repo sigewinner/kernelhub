@@ -1,0 +1,289 @@
+/**
+ * base.css —— 归一化 + 排版基线 + 工具类
+ *
+ * 原则：先把浏览器默认样式抹平（尤其是圆角、阴影、渐变、控件外观），
+ * 再给一套「只有字重与字号差别」的排版基线。
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  border-radius: var(--r-0);
+  background-image: none;
+  box-shadow: none;
+  text-shadow: none;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--fs-13);
+  line-height: var(--lh-normal);
+  color: var(--c-ink);
+  background: var(--c-paper);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 隐藏属性优先级最高：本工程大量用 display:flex 布局，必须显式压住 */
+[hidden] {
+  display: none !important;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ------------------------------------------------------------------ 排版 */
+
+h1,
+h2,
+h3,
+h4,
+p,
+figure,
+blockquote,
+dl,
+dd {
+  margin: 0;
+}
+
+h1 {
+  font-size: var(--fs-28);
+  font-weight: 400;
+  line-height: var(--lh-tight);
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  font-size: var(--fs-20);
+  font-weight: 500;
+  line-height: var(--lh-snug);
+}
+
+h3 {
+  font-size: var(--fs-16);
+  font-weight: 500;
+  line-height: var(--lh-snug);
+}
+
+h4 {
+  font-size: var(--fs-14);
+  font-weight: 500;
+  line-height: var(--lh-snug);
+}
+
+a {
+  color: var(--c-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+a:hover {
+  color: var(--c-accent);
+}
+
+strong,
+b {
+  font-weight: 500;
+}
+
+small {
+  font-size: var(--fs-12);
+}
+
+code,
+kbd,
+pre,
+samp {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+}
+
+ul,
+ol {
+  margin: 0;
+  padding-left: var(--sp-5);
+}
+
+hr {
+  height: 1px;
+  border: 0;
+  border-top: var(--line);
+  margin: var(--sp-5) 0;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+::selection {
+  background: var(--c-ink);
+  color: var(--c-inverse);
+}
+
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--c-ink);
+  outline-offset: 1px;
+}
+
+/* -------------------------------------------------------------- 滚动条 */
+/* 细、直角、无圆角，颜色只取规则线 */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-rule) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--c-rule);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--c-ink-3);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* -------------------------------------------------------------- 工具类 */
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.muted {
+  color: var(--c-ink-2);
+}
+
+.dim {
+  color: var(--c-ink-3);
+}
+
+.small {
+  font-size: var(--fs-12);
+}
+
+.accent {
+  color: var(--c-accent);
+}
+
+.ok {
+  color: var(--c-ok);
+}
+
+.warn {
+  color: var(--c-warn);
+}
+
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.grow {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.pre-wrap {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.gap-1 { gap: var(--sp-1); }
+.gap-2 { gap: var(--sp-2); }
+.gap-3 { gap: var(--sp-3); }
+.gap-4 { gap: var(--sp-4); }
+.gap-5 { gap: var(--sp-5); }
+
+.mt-1 { margin-top: var(--sp-1); }
+.mt-2 { margin-top: var(--sp-2); }
+.mt-3 { margin-top: var(--sp-3); }
+.mt-4 { margin-top: var(--sp-4); }
+.mt-5 { margin-top: var(--sp-5); }
+
+/* 状态点：全站唯一的圆形元素，且只有一个用途 —— 表示状态 */
+.dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-dot);
+  background: var(--c-ink-3);
+  flex: none;
+}
+
+.dot--ok { background: var(--c-ok); }
+.dot--warn { background: var(--c-warn); }
+.dot--err { background: var(--c-accent); }
+.dot--busy { background: var(--c-ink); }
+.dot--idle { background: var(--c-ink-3); }
+
+/* 骨架：灰底块，无动画条纹 */
+.skeleton {
+  background: var(--c-rule-2);
+  height: 14px;
+  width: 100%;
+}

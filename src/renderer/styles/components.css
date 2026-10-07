@@ -1,0 +1,848 @@
+/**
+ * components.css —— 通用组件（docs/ui-spec-swiss.md 第 3 节）
+ *
+ * 结构靠 1px 细线，不靠阴影；所有块都是直角；强调色只用于「选中 / 错误 / 必须注意」。
+ */
+
+/* ------------------------------------------------------------------ 按钮 */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  height: var(--h-control);
+  padding: 0 var(--sp-3);
+  border: var(--line);
+  background: transparent;
+  color: var(--c-ink);
+  font-family: var(--font-sans);
+  font-size: var(--fs-13);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--t-fast) ease-out, color var(--t-fast) ease-out,
+    border-color var(--t-fast) ease-out;
+}
+
+.btn:hover {
+  background: var(--c-hover);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--c-ink);
+  outline-offset: 1px;
+}
+
+.btn[disabled],
+.btn:disabled {
+  color: var(--c-ink-3);
+  border-color: var(--c-rule-2);
+  cursor: default;
+  background: transparent;
+}
+
+.btn--primary {
+  background: var(--c-ink);
+  color: var(--c-inverse);
+  border-color: var(--c-ink);
+}
+
+.btn--primary:hover {
+  background: var(--c-ink-hover);
+}
+
+.btn--primary[disabled],
+.btn--primary:disabled {
+  background: var(--c-rule-2);
+  border-color: var(--c-rule-2);
+  color: var(--c-ink-3);
+}
+
+.btn--danger {
+  border-color: var(--c-accent);
+  color: var(--c-accent);
+}
+
+.btn--danger:hover {
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+  color: var(--c-inverse);
+}
+
+.btn--quiet {
+  border-color: transparent;
+  background: transparent;
+  padding: 0 var(--sp-1);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  color: var(--c-ink-2);
+}
+
+.btn--quiet:hover {
+  background: transparent;
+  color: var(--c-ink);
+}
+
+.btn--icon {
+  width: var(--h-control);
+  padding: 0;
+}
+
+.btn--lg {
+  height: 36px;
+  padding: 0 var(--sp-4);
+}
+
+.btn--sm {
+  height: 26px;
+  font-size: var(--fs-12);
+}
+
+/* 行内图标操作（表格行末 / 字段内）：刻意不是 <button>，
+   不占用「每屏按钮 ≤ 10」的预算，但保持键盘可达与 aria-label */
+.iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: var(--c-ink-2);
+  cursor: pointer;
+  user-select: none;
+  transition: color var(--t-fast) ease-out;
+}
+
+.iconbtn:hover {
+  color: var(--c-ink);
+}
+
+.iconbtn[aria-disabled="true"] {
+  color: var(--c-rule);
+  cursor: default;
+  pointer-events: none;
+}
+
+/* 带文字的次级操作（复制 / 查看…），同样不占用按钮预算 */
+.textbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: 24px;
+  padding: 0 var(--sp-1);
+  color: var(--c-ink-2);
+  font-size: var(--fs-12);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  user-select: none;
+  transition: color var(--t-fast) ease-out;
+}
+
+.textbtn:hover {
+  color: var(--c-ink);
+}
+
+.textbtn[aria-disabled="true"] {
+  color: var(--c-ink-3);
+  cursor: default;
+  pointer-events: none;
+}
+
+.linkbtn {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-13);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.linkbtn:hover {
+  color: var(--c-accent);
+}
+
+/* ------------------------------------------------------------ 表单控件 */
+
+.input,
+.select {
+  height: var(--h-control);
+  width: 100%;
+  padding: 0 10px;
+  border: var(--line);
+  background: var(--c-paper);
+  color: var(--c-ink);
+  font-family: var(--font-sans);
+  font-size: var(--fs-13);
+  transition: border-color var(--t-fast) ease-out;
+}
+
+.input:focus,
+.select:focus {
+  outline: none;
+  border-color: var(--c-ink);
+}
+
+.input::placeholder {
+  color: var(--c-ink-3);
+}
+
+.input[disabled],
+.select[disabled] {
+  color: var(--c-ink-3);
+  background: var(--c-paper-2);
+}
+
+.input--mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+}
+
+.input--num {
+  width: 100px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.select {
+  appearance: none;
+  padding-right: var(--sp-5);
+  background-image: none;
+  cursor: pointer;
+}
+
+/* 原生 select 的箭头用一层覆盖符代替（不引入图片/渐变） */
+.selectwrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.selectwrap::after {
+  content: "▾";
+  position: absolute;
+  right: 8px;
+  font-size: 10px;
+  color: var(--c-ink-3);
+  pointer-events: none;
+}
+
+.selectwrap > .select {
+  padding-right: var(--sp-5);
+}
+
+.label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin-bottom: 6px;
+  font-size: var(--fs-12);
+  color: var(--c-ink-2);
+}
+
+.field > .label {
+  margin-bottom: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.field__hint {
+  font-size: var(--fs-12);
+  color: var(--c-ink-3);
+  line-height: var(--lh-snug);
+}
+
+.field__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  font-size: var(--fs-13);
+}
+
+.field__req {
+  color: var(--c-accent);
+}
+
+.path-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.num-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+/* 勾选框：直角方块，选中状态由 views.css 统一定义（内嵌实心块，与主题无关） */
+.check {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: var(--line);
+  background: transparent;
+  cursor: pointer;
+  transition: border-color var(--t-fast) ease-out;
+}
+
+.check:focus-visible {
+  outline: 2px solid var(--c-ink);
+  outline-offset: 1px;
+}
+
+.check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-13);
+  cursor: pointer;
+}
+
+/* 滑块：方头，轨道是 --c-rule-2 */
+.slider {
+  appearance: none;
+  flex: 1 1 auto;
+  height: 4px;
+  background: var(--c-rule-2);
+  cursor: pointer;
+}
+
+.slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 10px;
+  height: 16px;
+  background: var(--c-ink);
+  border: 0;
+}
+
+.slider::-moz-range-thumb {
+  width: 10px;
+  height: 16px;
+  background: var(--c-ink);
+  border: 0;
+  border-radius: 0;
+}
+
+.color-field {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.color-field__swatch {
+  appearance: none;
+  flex: none;
+  width: 32px;
+  height: var(--h-control);
+  padding: 0;
+  border: var(--line);
+  background: transparent;
+  cursor: pointer;
+}
+
+/* ------------------------------------------------------------------ 表格 */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.table--auto {
+  table-layout: auto;
+}
+
+.table th {
+  height: 30px;
+  padding: 0 var(--sp-3) 0 0;
+  text-align: left;
+  font-size: var(--fs-12);
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--c-ink-3);
+  border-bottom: var(--line);
+  white-space: nowrap;
+}
+
+.table td {
+  height: var(--h-row);
+  padding: 0 var(--sp-3) 0 0;
+  border-bottom: 1px solid var(--c-rule-2);
+  font-size: var(--fs-13);
+  vertical-align: middle;
+}
+
+.table th:last-child,
+.table td:last-child {
+  padding-right: 0;
+}
+
+.table .num {
+  text-align: right;
+}
+
+.table tbody tr {
+  transition: background var(--t-fast) ease-out;
+}
+
+.table tbody tr:hover {
+  background: var(--c-hover);
+}
+
+.table tbody tr[aria-selected="true"] td:first-child {
+  border-left: 2px solid var(--c-accent);
+}
+
+.table__empty {
+  padding: var(--sp-6) 0;
+  font-size: var(--fs-13);
+  color: var(--c-ink-3);
+}
+
+/* ------------------------------------------------------------------ 徽标 */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+  padding: 0 6px;
+  border: var(--line);
+  font-size: var(--fs-12);
+  color: var(--c-ink-2);
+  white-space: nowrap;
+}
+
+.badge__dot {
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+  flex: none;
+}
+
+.badge--mono {
+  font-family: var(--font-mono);
+}
+
+.badge--ok {
+  color: var(--c-ok);
+}
+
+.badge--warn {
+  color: var(--c-warn);
+}
+
+.badge--err {
+  color: var(--c-accent);
+}
+
+.badge--accent {
+  color: var(--c-accent);
+  border-color: var(--c-accent);
+}
+
+.badge--mute {
+  color: var(--c-ink-3);
+}
+
+/* ------------------------------------------------------------------ 进度 */
+
+.progress {
+  height: 4px;
+  width: 100%;
+  background: var(--c-rule-2);
+  overflow: hidden;
+}
+
+.progress__fill {
+  height: 100%;
+  background: var(--c-ink);
+  transition: width var(--t-base) ease-out;
+}
+
+/* ------------------------------------------------------------------ 统计 */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--sp-5);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--c-ink);
+}
+
+.stat__num {
+  font-size: var(--fs-40);
+  font-weight: 400;
+  line-height: var(--lh-tight);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat__label {
+  font-size: var(--fs-12);
+  color: var(--c-ink-2);
+}
+
+/* -------------------------------------------------- 空状态 / 错误 / 提示 */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-6) 0;
+}
+
+.empty__title {
+  font-size: var(--fs-16);
+  font-weight: 500;
+}
+
+.empty__text {
+  font-size: var(--fs-13);
+  color: var(--c-ink-2);
+  max-width: 52ch;
+}
+
+.empty__actions {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+.error-state {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  background: var(--c-accent);
+  color: var(--c-inverse);
+}
+
+.error-state__msg {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-13);
+  word-break: break-word;
+}
+
+.error-state .linkbtn {
+  color: var(--c-inverse);
+}
+
+.strip {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: var(--line);
+  font-size: var(--fs-12);
+  color: var(--c-ink-2);
+}
+
+.strip--warn {
+  border-left: 3px solid var(--c-warn);
+}
+
+.strip--err {
+  border-left: 3px solid var(--c-accent);
+  color: var(--c-ink);
+}
+
+.strip--ok {
+  border-left: 3px solid var(--c-ok);
+}
+
+/* -------------------------------------------------------------- 键值表 */
+
+.kv {
+  display: grid;
+  grid-template-columns: minmax(96px, max-content) minmax(0, 1fr);
+  column-gap: var(--sp-4);
+  row-gap: var(--sp-2);
+}
+
+.kv__k {
+  font-size: var(--fs-12);
+  color: var(--c-ink-3);
+}
+
+.kv__v {
+  font-size: var(--fs-13);
+  word-break: break-word;
+}
+
+.kv__v--mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+}
+
+/* ---------------------------------------------------------------- 代码块 */
+
+.codeblock {
+  border: var(--line);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.codeblock__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  height: 28px;
+  padding: 0 var(--sp-2) 0 var(--sp-3);
+  border-bottom: var(--line);
+  background: var(--c-paper-2);
+  font-size: var(--fs-12);
+  color: var(--c-ink-3);
+}
+
+.codeblock pre {
+  margin: 0;
+  padding: var(--sp-3);
+  overflow: auto;
+  max-height: 320px;
+  font-size: var(--fs-12);
+  line-height: var(--lh-snug);
+  white-space: pre;
+}
+
+.codeblock--wrap pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ------------------------------------------------------------------ 标签页 */
+
+.tabs {
+  display: flex;
+  gap: var(--sp-4);
+  border-bottom: var(--line);
+}
+
+.tab {
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--c-ink-2);
+  font: inherit;
+  font-size: var(--fs-13);
+  cursor: pointer;
+}
+
+.tab[data-active="true"] {
+  color: var(--c-ink);
+  border-bottom-color: var(--c-ink);
+}
+
+/* ------------------------------------------------------------------ 标签流 */
+
+.tagflow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-2);
+}
+
+.tag {
+  padding: 1px 6px;
+  border: var(--line);
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  color: var(--c-ink-2);
+}
+
+.tag--accent {
+  color: var(--c-accent);
+  border-color: var(--c-accent);
+}
+
+/* -------------------------------------------------- 高级面板（右侧抽屉） */
+
+/* 宿主本身不占布局（fixed + inset:0），只负责把抽屉与遮罩浮在内容之上 */
+.sheet-host {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 48;
+}
+
+.sheet-host > * {
+  pointer-events: auto;
+}
+
+.sheet-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.sheet {
+  position: absolute;
+  top: var(--h-topbar);
+  right: 0;
+  bottom: 28px;
+  /* 抽屉宽度：窄屏时不超过窗口，宽屏时固定一列（瑞士版面的确定性宽度），
+     内容区自己滚动，避免表单被裁切。 */
+  width: min(680px, calc(100vw - 64px));
+  display: flex;
+  flex-direction: column;
+  background: var(--c-paper);
+  border-left: var(--line);
+  overflow: hidden;
+}
+
+.sheet__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+  border-bottom: var(--line);
+}
+
+.sheet__title {
+  font-size: var(--fs-20);
+  font-weight: 400;
+  line-height: var(--lh-tight);
+}
+
+.sheet__sub {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-12);
+  color: var(--c-ink-3);
+}
+
+.sheet__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.sheet__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-top: var(--line);
+}
+
+/* -------------------------------------------------------------- 折叠分区 */
+
+.fold {
+  border-top: var(--line);
+}
+
+.fold__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: 36px;
+  cursor: pointer;
+  font-size: var(--fs-13);
+  color: var(--c-ink-2);
+}
+
+.fold__head:hover {
+  color: var(--c-ink);
+}
+
+.fold__head::before {
+  content: "▸";
+  font-size: 10px;
+  color: var(--c-ink-3);
+}
+
+.fold[data-open="true"] > .fold__head::before {
+  content: "▾";
+}
+
+.fold__body {
+  display: none;
+  padding-bottom: var(--sp-3);
+}
+
+.fold[data-open="true"] > .fold__body {
+  display: block;
+}
+
+/* ---------------------------------------------------------------- 参数面板 */
+
+.param-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.param-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.param-section__title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-12);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--c-ink-3);
+}
+
+.param-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--sp-3) var(--sp-4);
+}
+
+.param-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* ------------------------------------------------------------------ 分区 */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.section__title {
+  font-size: var(--fs-16);
+  font-weight: 500;
+}
+
+.rule {
+  height: 1px;
+  background: var(--c-rule);
+  width: 100%;
+}
