@@ -1121,9 +1121,9 @@ async function runSelfTest() {
 
       await js(`window.__khsTest ? window.__khsTest.goto('#/plugins') : null`);
       await settle(1200);
-      const tabs = await js(
-        `Array.from(document.querySelectorAll('#view .toolbar .btn')).map((b) => b.innerText.trim())`
-      );
+      // 2.0.3 起这两个标签是分段控件（指示条会滑动），不再是两个 .btn
+      const SEG = `Array.from(document.querySelectorAll('.segmented__btn')).map((b) => b.innerText.trim())`;
+      const tabs = await js(SEG);
       step('「插件」页含「已安装 / 可安装」两个标签', tabs.includes('已安装') && tabs.includes('可安装'), tabs.join(' / '));
 
       const installedRows = await js(`document.querySelectorAll('#view table tbody tr').length`);
@@ -1132,7 +1132,7 @@ async function runSelfTest() {
       // 老链接 #/kernels 要能落到新页面
       await js(`window.__khsTest ? window.__khsTest.goto('#/kernels') : null`);
       await settle(900);
-      const afterAlias = await js(`Array.from(document.querySelectorAll('#view .toolbar .btn')).map((b) => b.innerText.trim())`);
+      const afterAlias = await js(SEG);
       step('#/kernels 旧链接仍可用（落到插件页）', afterAlias.includes('已安装'), afterAlias.join(' / '));
 
       /* ---- 显示名规则：类型 + 最典型的两个扩展名（代码层面的名字不动）---- */
@@ -1152,12 +1152,71 @@ async function runSelfTest() {
         codeNames.map((c) => `${c.id}→${c.codeName}`).slice(0, 4).join('；')
       );
 
-      /* ---- 「可安装」标签：真的去拉一次插件目录并渲染 ---- */
-      await js(
-        `(() => { const b = Array.from(document.querySelectorAll('#view .toolbar .btn')).find((x) => x.innerText.trim() === '可安装'); if (b) b.click(); })()`
+      /* ---- 2.0.3 动效与手感：进度条、指示条、通知覆盖 ---- */
+
+      // 进度条：加粗到 6px + 宽度过渡缓进缓出
+      const pstyle = await js(`window.__khsTest.progressStyle()`);
+      step(
+        '进度条已加粗（6px）',
+        pstyle && pstyle.height === '6px',
+        pstyle ? `height=${pstyle.height}` : '取不到样式'
       );
-      await settle(5000);
-      const catalogRows = await js(`document.querySelectorAll('#view table tbody tr').length`);
+      step(
+        '进度条宽度过渡为缓进缓出',
+        pstyle &&
+          /width/.test(pstyle.transitionProperty) &&
+          /cubic-bezier/.test(pstyle.transitionTimingFunction),
+        pstyle ? `${pstyle.transitionProperty} ${pstyle.transitionDuration} ${pstyle.transitionTimingFunction}` : ''
+      );
+
+      // 分段指示条：切到「可安装」后，指示条的目标位置应等于该按钮的左偏移。
+      // 注意这里断言的是**内联目标值**而不是 computed transform：自检窗口不可见，
+      // Chromium 不为隐藏窗口产生帧，CSS 过渡会一直停在第 0 帧（测得 translateX(0)），
+      // 但目标值已经改对了，可见窗口里就会滑过去。过渡配置单独断言。
+      const segBefore = await js(`window.__khsTest.segmentedInfo()`);
+      const clicked = await js(`window.__khsTest.clickSegment('可安装')`);
+      await settle(700);
+      const segAfter = await js(`window.__khsTest.segmentedInfo()`);
+      const ind0 = (info) => (info && info.indicators && info.indicators[0]) || null;
+      const before = ind0(segBefore);
+      const after = ind0(segAfter);
+      const activeBtn = segAfter && segAfter.buttons ? segAfter.buttons.find((b) => b.active) : null;
+      const wantTransform = activeBtn ? `translateX(${activeBtn.offsetLeft}px)` : '';
+      step(
+        '分段选项卡指示条随选中项移动',
+        Boolean(after) &&
+          Boolean(activeBtn) &&
+          activeBtn.label === '可安装' &&
+          after.inlineTransform === wantTransform &&
+          (!before || before.inlineTransform !== after.inlineTransform),
+        after
+          ? `点击=${clicked ? clicked.label : '未找到按钮'}；选中=${activeBtn ? activeBtn.label : '?'}；目标位置=${after.inlineTransform}（应=${wantTransform}）`
+          : '取不到指示条'
+      );
+      step(
+        '指示条滑动为缓进缓出（非瞬间跳变）',
+        Boolean(after) && /cubic-bezier/.test(after.transitionTimingFunction) && parseFloat(after.transitionDuration) >= 0.2,
+        after ? `${after.transitionDuration} ${after.transitionTimingFunction}` : ''
+      );
+
+      // 通知：同类型互相覆盖
+      const probe = await js(`window.__khsTest.toastProbe()`);
+      step(
+        '同类型通知互相覆盖（不堆叠）',
+        probe && probe.afterSame.success === 1 && probe.afterDiff.error === 1 && probe.total === 2,
+        probe
+          ? `1 条后 success=${probe.afterOne.success}；再发 1 条 success=${probe.afterSame.success}；再发 error 后 total=${probe.total}`
+          : '探针失败'
+      );
+      await js(`window.__khsTest.toastClear()`);
+
+      /* ---- 「可安装」标签：目录要走网络，轮询等它渲染出来（最多 10s） ---- */
+      let catalogRows = 0;
+      for (let i = 0; i < 25; i++) {
+        catalogRows = await js(`document.querySelectorAll('#view table tbody tr').length`);
+        if (catalogRows > 0) break;
+        await settle(400);
+      }
       const afterNames = (await js(`window.__khsTest.kernelNames()`)) || [];
       // 联网时应有十几行；离线时目录拉不到、显示空状态也算通过（只报数量）
       step(

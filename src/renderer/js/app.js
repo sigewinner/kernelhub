@@ -1071,6 +1071,88 @@ function installTestHooks() {
     /** 重扫内核 + 刷新格式缓存：与「插件」页装完/卸完后的动作完全一致 */
     refreshKernels: (opts) => refreshKernels(opts || { announce: false }),
 
+    /* ------------------------------------------------------- 通知与动效
+     * 2.0.3 新增：通知是「同类型互相覆盖」而不是堆叠，这里给自检一个可观测的入口。
+     */
+    toastCounts: () => toast.counts(),
+    toastCount: () => toast.count(),
+    toastClear: () => toast.clear(),
+    /** 手动弹一条通知（动效验证工具用，也可在调试时手动造场景） */
+    toastShow: (type, title, text) => toast[type] ? toast[type](title, text ? { text } : undefined) : null,
+
+    /**
+     * 连发两条同类型 + 一条不同类型，返回每一步的计数。
+     * 期望：两条成功 → 成功只有 1 条（覆盖）；再来一条错误 → 总共 2 条。
+     */
+    toastProbe() {
+      toast.clear();
+      toast.success('第一条成功');
+      const afterOne = toast.counts();
+      toast.success('第二条成功');
+      const afterSame = toast.counts();
+      toast.error('一条错误');
+      const afterDiff = toast.counts();
+      return { afterOne, afterSame, afterDiff, total: toast.count() };
+    },
+
+    /** 进度条的关键计算样式（验证加粗与缓进缓出是否生效） */
+    progressStyle() {
+      const track = document.createElement('div');
+      track.className = 'progress';
+      const fill = document.createElement('div');
+      fill.className = 'progress__fill';
+      track.appendChild(fill);
+      document.body.appendChild(track);
+      const cs = getComputedStyle(track);
+      const cf = getComputedStyle(fill);
+      const out = {
+        height: cs.height,
+        transitionProperty: cf.transitionProperty,
+        transitionDuration: cf.transitionDuration,
+        transitionTimingFunction: cf.transitionTimingFunction,
+      };
+      track.remove();
+      return out;
+    },
+
+    /** 分段选项卡的完整状态（自检用：定位「指示条没动」这类问题） */
+    segmentedInfo() {
+      const buttons = Array.from(document.querySelectorAll('.segmented__btn'));
+      const indicators = Array.from(document.querySelectorAll('.segmented__indicator'));
+      return {
+        buttonCount: buttons.length,
+        indicatorCount: indicators.length,
+        buttons: buttons.map((b) => ({
+          label: b.innerText.trim(),
+          active: b.dataset.active === 'true',
+          offsetLeft: b.offsetLeft,
+          offsetWidth: b.offsetWidth,
+          connected: b.isConnected,
+          offsetParent: b.offsetParent ? b.offsetParent.className : null,
+        })),
+        indicators: indicators.map((i) => ({
+          transform: getComputedStyle(i).transform,
+          width: getComputedStyle(i).width,
+          // 内联样式是「目标值」。自检窗口不可见时 Chromium 不产生帧，
+          // 过渡会停在起点，computed transform 读不到终值 —— 判断是否移动要看这个。
+          inlineTransform: i.style.transform,
+          transitionDuration: getComputedStyle(i).transitionDuration,
+          transitionTimingFunction: getComputedStyle(i).transitionTimingFunction,
+          connected: i.isConnected,
+        })),
+      };
+    },
+
+    /** 点击「可安装 / 已安装」分段按钮；返回按钮信息或 null */
+    clickSegment(label) {
+      const btn = Array.from(document.querySelectorAll('.segmented__btn')).find(
+        (b) => b.innerText.trim() === label
+      );
+      if (!btn) return null;
+      btn.click();
+      return { label: btn.innerText.trim(), active: btn.dataset.active === 'true' };
+    },
+
     /** 路由跳转并等待视图挂载完成 */
     async goto(hash) {
       const target = String(hash || '#/convert');

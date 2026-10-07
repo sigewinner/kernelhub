@@ -49,6 +49,10 @@ FFmpeg、PyMuPDF、Pillow、Office 文档这些大块头，在「插件」页按
 界面是瑞士风格：网格、无衬线、直角、无阴影，每屏按钮不超过 10 个。
 详细配置都收在「高级」抽屉里，不挡路。
 
+动效克制但连贯：进度条与选项卡指示条走缓进缓出，通知卡片进出场与堆叠让位带缓动，
+同类型的通知互相覆盖（而不是叠一屏长得一样的卡片）。
+所有动效都跟随系统「减少动态效果」偏好自动关闭。
+
 | | |
 |---|---|
 | ![高级抽屉](docs/screenshots/06-convert-advanced.png) | ![协议规范](docs/screenshots/08-protocol.png) |
@@ -66,8 +70,8 @@ FFmpeg、PyMuPDF、Pillow、Office 文档这些大块头，在「插件」页按
 
 | 文件 | 大小 | 说明 |
 |---|---|---|
-| `KernelHub Studio-2.0.2-setup.exe` | 89.9 MB | 安装版：可选安装目录，自动建快捷方式 |
-| `KernelHub Studio-2.0.2-portable.exe` | 89.6 MB | 便携版：免安装，首次启动要自解压，稍慢十几秒 |
+| `KernelHub Studio-2.0.3-setup.exe` | 89.9 MB | 安装版：可选安装目录，自动建快捷方式 |
+| `KernelHub Studio-2.0.3-portable.exe` | 89.6 MB | 便携版：免安装，首次启动要自解压，稍慢十几秒 |
 
 ### 2. 系统要求
 
@@ -149,12 +153,18 @@ npm run build:withhub    :: 一体化模式：把整个内核仓库也打进包�
 node tools\audit.js               :: 源码体检：编码完整性 / JS 语法 / 渲染层依赖边界
 node tools\smoke.js               :: 引擎端到端：真实调用内核转换并校验产物
 node tools\uiverify.js            :: 界面端到端：启动开发宿主 + Chrome，跑完整流程并截图
+node tools\verify-motion.js       :: 动效逐帧采样：证明过渡真的在动（自检窗口不可见，看不到帧）
 
 :: 打包产物
 "KernelHub Studio.exe" --selftest --selftest-out=D:\report.json
 node tools\verify-engine-in-electron.js --app <解包目录>
 node tools\verify-plugin-install.js --app <解包目录> --id pillow-image
 ```
+
+> `verify-motion.js` 解决一个具体的盲区：应用自检跑在**不可见**窗口里，而 Chromium
+> 不为隐藏窗口产生帧，CSS 过渡会一直停在第 0 帧 —— 自检只能验证「目标值对不对、
+> 过渡配置有没有生效」，验证不了「动画到底有没有在动」。这个工具用真实 Chrome
+> 在 `requestAnimationFrame` 里逐帧读计算样式，把中间帧打印出来。
 
 ### 目录结构
 

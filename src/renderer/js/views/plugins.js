@@ -17,6 +17,7 @@
 import { h, clear, on, iconAction } from '../dom.js';
 import { icon } from '../icons.js';
 import { statusBadge } from '../layout.js';
+import { createSegmented } from '../segmented.js';
 
 /** 插件安装状态 → 文案与色调 */
 const STATE_META = {
@@ -54,19 +55,16 @@ export async function mount(host, ctx) {
 
   /* --------------------------------------------------------------- 结构 */
 
-  const installedTabBtn = h('button.btn', {
-    type: 'button',
-    title: '查看已安装的插件（等于原来「内核」页的内容）',
-    on: { click: () => switchTab('installed') },
-  }, h('span', { textContent: '已安装' }));
-
-  const catalogTabBtn = h('button.btn', {
-    type: 'button',
-    title: '从插件仓库安装新插件',
-    on: { click: () => switchTab('catalog') },
-  }, h('span', { textContent: '可安装' }));
-
-  const tabBar = h('div.toolbar', null, installedTabBtn, catalogTabBtn);
+  // 分段选项卡：指示条会滑过去，而不是两个按钮硬切背景色
+  const tabBar = createSegmented({
+    ariaLabel: '插件视图',
+    value: 'installed',
+    items: [
+      { value: 'installed', label: '已安装', title: '查看已安装的插件（等于原来「内核」页的内容）' },
+      { value: 'catalog', label: '可安装', title: '从插件仓库安装新插件' },
+    ],
+    onChange: (next) => switchTab(next),
+  });
 
   const progressStrip = h('div.strip');
   const installedHost = h('div');
@@ -81,7 +79,7 @@ export async function mount(host, ctx) {
       }),
       h('div.view-rule')
     ),
-    tabBar,
+    h('div.toolbar', null, tabBar.el),
     progressStrip,
     installedHost,
     catalogHost
@@ -128,8 +126,8 @@ export async function mount(host, ctx) {
 
   async function switchTab(next) {
     tab = next;
-    installedTabBtn.className = tab === 'installed' ? 'btn btn--primary' : 'btn';
-    catalogTabBtn.className = tab === 'catalog' ? 'btn btn--primary' : 'btn';
+    // 让指示条滑过去（代码切换时也要同步，否则指示条会停在旧位置）
+    tabBar.select(next, true);
     installedHost.hidden = tab !== 'installed';
     catalogHost.hidden = tab !== 'catalog';
 
@@ -193,22 +191,59 @@ export async function mount(host, ctx) {
     infoStrip.appendChild(h('span', { textContent: bits.join('　·　') }));
   }
 
+  /**
+   * 安装进度条。
+   *
+   * 2.0.3 的三点改动：
+   *   1. 进度条加粗（CSS 里 .progress 4→6px）、加宽，进度不再是一根看不清的细线
+   *   2. 百分比数字单列一栏、等宽字体，数字变化时不会把文字挤来挤去（tabular-nums）
+   *   3. 还没收到第一个进度事件时用「未知进度」呼吸态，而不是显示一条空轨道
+   */
+  const progressFill = h('div.progress__fill');
+  const progressPct = h('span.progress__pct', { textContent: '' });
+  const progressBar = h('div.progress.progress--install', null, progressFill);
+  const progressRow = h('div.progress-row', null, progressBar, progressPct);
+  let progressVisiblePct = null;
+
   function renderProgress(payload) {
-    clear(progressStrip);
     if (!payload) {
       progressStrip.hidden = true;
+      progressVisiblePct = null;
       return;
     }
     progressStrip.hidden = false;
-    const pct = Number(payload.percent) || 0;
+    const pct = Number(payload.percent);
+    const known = Number.isFinite(pct) && pct > 0;
     progressStrip.className = payload.phase === 'error' ? 'strip strip--err' : 'strip strip--ok';
-    progressStrip.appendChild(h('span', { textContent: `${payload.message || payload.phase} ` }));
-    if (pct > 0 && pct < 100) {
-      progressStrip.appendChild(
-        h('div.progress', { style: { width: '200px', display: 'inline-block', marginLeft: '8px' } },
-          h('div.progress__fill', { style: { width: `${Math.max(2, pct)}%` } })
-        )
-      );
+
+    // 文案用 textContent 就地更新，避免整块重建导致进度条重新播放动画
+    let label = progressStrip.querySelector('.progress-label');
+    if (!label) {
+      label = h('span.progress-label');
+      clear(progressStrip);
+      progressStrip.appendChild(label);
+      progressStrip.appendChild(progressRow);
+    }
+    label.textContent = payload.message || payload.phase || '';
+
+    if (payload.phase === 'error' || payload.phase === 'done' || !known) {
+      progressBar.classList.toggle('progress--indeterminate', payload.phase !== 'error' && payload.phase !== 'done');
+      progressPct.textContent = '';
+      if (payload.phase === 'done') {
+        progressBar.classList.remove('progress--indeterminate');
+        progressFill.style.width = '100%';
+      }
+      progressVisiblePct = null;
+      return;
+    }
+
+    progressBar.classList.remove('progress--indeterminate');
+    progressFill.style.width = `${Math.min(100, Math.max(2, pct))}%`;
+    // 只在整数百分比变化时写 DOM，减少无谓更新
+    const rounded = Math.round(pct);
+    if (rounded !== progressVisiblePct) {
+      progressVisiblePct = rounded;
+      progressPct.textContent = `${rounded}%`;
     }
   }
 
@@ -425,9 +460,13 @@ export async function mount(host, ctx) {
   }));
 
   await switchTab('installed');
+  // 挂载后才量得到按钮位置，这里把指示条摆好（首次不动画）
+  tabBar.sync(false);
+  requestAnimationFrame(() => tabBar.relayout());
 
   return {
     unmount() {
+      tabBar.dispose();
       if (kernelsInstance) {
         try {
           kernelsInstance.unmount();

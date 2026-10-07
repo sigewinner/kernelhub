@@ -381,11 +381,53 @@
   padding: var(--sp-3);
   background: var(--c-paper);
   border: var(--line);
-  transition: opacity var(--t-base) ease-out;
+  /* 进场：淡入 + 从下方轻轻推上来（宿主锚在右下角，新卡片从底部涌现最自然） */
+  animation: toast-in var(--t-slow) var(--e-out) both;
 }
 
 .toast--leaving {
-  opacity: 0;
+  /* 出场：淡出 + 向下让位。用 animation 而不是 transition，
+     这样嵌套在里面的内容不需要各自写过渡，一次动画整体生效 */
+  animation: toast-out var(--t-base) var(--e-in-out) both;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--d-shift));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(var(--d-shift));
+  }
+}
+
+/* 内容替换时的交叉淡入（同一类型的通知相互覆盖，见 js/toast.js） */
+.toast__swapping {
+  animation: toast-swap var(--t-base) var(--e-in-out);
+}
+
+@keyframes toast-swap {
+  0% {
+    opacity: 1;
+  }
+  45% {
+    opacity: 0.15;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 .toast__body {

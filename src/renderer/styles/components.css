@@ -462,7 +462,7 @@
 /* ------------------------------------------------------------------ 进度 */
 
 .progress {
-  height: 4px;
+  height: 6px; /* 2.0.3：4 → 6px。细条在深色主题下几乎看不见，加粗一档手感更明确 */
   width: 100%;
   background: var(--c-rule-2);
   overflow: hidden;
@@ -470,8 +470,57 @@
 
 .progress__fill {
   height: 100%;
+  min-width: 2px; /* 进度极小时也要看得见，否则像没开始 */
   background: var(--c-ink);
-  transition: width var(--t-base) ease-out;
+  /* 缓进缓出：进度是分段跳变上报的，缓动把每一跳接起来，不再一格一格地蹦 */
+  transition: width var(--t-slow) var(--e-in-out);
+}
+
+/* 进度未知时（还没收到第一个进度事件）用透明度呼吸，不引入动画条纹 */
+.progress--indeterminate .progress__fill {
+  width: 100%;
+  animation: progress-breathe 1.4s var(--e-in-out) infinite;
+}
+
+@keyframes progress-breathe {
+  0%,
+  100% {
+    opacity: 0.22;
+  }
+  50% {
+    opacity: 0.72;
+  }
+}
+
+/* 安装条：比默认宽一些，给百分比数字留出位置 */
+.progress--install {
+  width: 220px;
+}
+
+/* 进度行：进度条 + 百分比数字。数字用等宽字体并右对齐，
+   百分比跳动时不会把左侧文字挤来挤去 */
+.progress-row {
+  display: inline-flex;
+  align-items: center;
+  align-self: center; /* .strip 是 flex-start，进度行要垂直居中才不别扭 */
+  gap: var(--sp-3);
+  flex: 1 1 auto;
+  min-width: 120px;
+  max-width: 300px;
+}
+
+.progress-label {
+  flex: none;
+}
+
+.progress__pct {
+  flex: none;
+  min-width: 40px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--c-ink-2);
 }
 
 /* ------------------------------------------------------------------ 统计 */
@@ -656,6 +705,64 @@
 .tab[data-active="true"] {
   color: var(--c-ink);
   border-bottom-color: var(--c-ink);
+}
+
+/* ------------------------------------------------------- 分段选项卡（2.0.3）
+ *
+ * 相比 .tab 的下划线，这里用一块实心方块当指示条 —— 依然是直角、黑白、无阴影，
+ * 但方块可以**滑动**，所以切换标签时有一个连续的运动，而不是颜色硬切。
+ * 指示条由 JS 按当前按钮的位置设置 transform / width（见 js/controls.js）。
+ */
+
+.segmented {
+  position: relative;
+  display: inline-flex;
+  border: var(--line);
+  background: var(--c-paper);
+}
+
+.segmented__btn {
+  position: relative;
+  z-index: 1;
+  height: var(--h-control);
+  padding: 0 var(--sp-4);
+  border: 0;
+  background: transparent;
+  color: var(--c-ink-2);
+  font: inherit;
+  font-size: var(--fs-13);
+  cursor: pointer;
+  /* 文字颜色与指示条同速，避免「条滑到了、字还没变」的割裂感 */
+  transition: color var(--t-slow) var(--e-in-out);
+}
+
+.segmented__btn:hover {
+  color: var(--c-ink);
+}
+
+.segmented__btn[data-active="true"] {
+  color: var(--c-inverse);
+}
+
+.segmented__indicator {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  background: var(--c-ink);
+  transition: transform var(--t-slow) var(--e-in-out), width var(--t-slow) var(--e-in-out);
+  will-change: transform, width;
+}
+
+/* 系统偏好「减少动态效果」时，所有位移与动画一律停用（无障碍） */
+@media (prefers-reduced-motion: reduce) {
+  .segmented__indicator,
+  .segmented__btn,
+  .progress__fill,
+  .toast {
+    transition-duration: 1ms !important;
+    animation: none !important;
+  }
 }
 
 /* ------------------------------------------------------------------ 标签流 */

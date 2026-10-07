@@ -1,7 +1,7 @@
 {
   "name": "kernelhub-studio",
   "productName": "KernelHub Studio",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "CKP 协议驱动的现代文件格式转换工作台（Electron + Node.js）——壳 + 按需插件",
   "main": "src/main/main.js",
   "type": "commonjs",
@@ -26,6 +26,7 @@
     "verify:package": "node tools/verify-package.js",
     "verify:portable": "node tools/verify-portable.js",
     "verify:window": "node tools/verify-window.js",
+    "verify:motion": "node tools/verify-motion.js",
     "install:local": "node tools/install-local.js",
     "diag:launch": "node tools/diagnose-launch.js",
     "integrity": "node tools/integrity.js",
