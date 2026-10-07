@@ -129,21 +129,57 @@ app.whenReady().then(async () => {
         ? '内核=' + outcome.kernel_id + ' 产出=' + outcome.outputs.map((o) => path.basename(o.path) + '(' + o.bytes + 'B)').join(',')
         : 'error=' + JSON.stringify(outcome.error) + ' stderr=' + String(outcome.stderr || '').slice(0, 200));
 
-    // 再验证一个「依赖只在插件自己 vendor 里」的内核，证明 per-plugin vendor 生效
-    const withVendor = registry.readyEntries().filter((e) => e.manifest.runtime.requires.length > 0);
-    if (withVendor.length) {
-      const e = withVendor[0];
-      const out2 = path.join(work, 'vendor-check');
-      fs.mkdirSync(out2, { recursive: true });
-      const o2 = await hub.convert(
-        { sources: [png], op: 'convert', targetFormat: 'bmp', kernelId: e.id, outDir: out2, overwrite: true },
+    // 再验证「依赖只在插件自己 vendor 里」的内核 —— 这是 2.0.0 的核心机制。
+    // 注意不能按 manifest 的 runtime.requires 筛：种子插件在清单里写的是空数组，
+    // 实际靠 _require() 在运行时动态导入（data-table → openpyxl，text-markup → markdown），
+    // 所以这里直接按「插件目录下有没有 vendor」判断，并挑一个真正会用到的转换来跑。
+    const vendorCases = [
+      {
+        id: 'data-table',
+        from: 'csv',
+        to: 'xlsx',
+        note: '需要 openpyxl（只在 data-table/vendor 里）',
+        make: () => {
+          const p = path.join(work, 'table.csv');
+          fs.writeFileSync(p, fixtures.toCsv(fixtures.TABLE_ROWS), 'utf8');
+          return p;
+        },
+      },
+      {
+        id: 'text-markup',
+        from: 'md',
+        to: 'html',
+        note: '需要 markdown（只在 text-markup/vendor 里）',
+        make: () => {
+          const p = path.join(work, 'doc.md');
+          fs.writeFileSync(p, '# 标题\\n\\n正文 **加粗**。\\n', 'utf8');
+          return p;
+        },
+      },
+    ];
+    let tested = 0;
+    for (const c of vendorCases) {
+      const e = registry.get(c.id);
+      if (!e || !e.usable) continue;
+      if (!fs.existsSync(path.join(e.directory, 'vendor'))) continue;
+      const src = c.make();
+      const outDir = path.join(work, 'vendor-' + c.id);
+      fs.mkdirSync(outDir, { recursive: true });
+      const o = await hub.convert(
+        { sources: [src], op: 'convert', targetFormat: c.to, kernelId: c.id, outDir, overwrite: true },
         {}
       );
-      stage('带 vendor 的内核可执行（' + e.id + '）', Boolean(o2.ok),
-        o2.ok ? '产出 ' + o2.outputs.map((x) => x.bytes + 'B').join(',') : JSON.stringify(o2.error));
-    } else {
-      stage('带 vendor 的内核可执行', true, '当前工作区没有带 Python 依赖的内核，跳过');
+      const okc = Boolean(o.ok && o.outputs.length && o.outputs.every((x) => x.bytes > 0));
+      stage(
+        'per-plugin vendor 生效（' + c.id + '：' + c.from + ' → ' + c.to + '）',
+        okc,
+        okc
+          ? c.note + '；产出 ' + o.outputs.map((x) => path.basename(x.path) + '(' + x.bytes + 'B)').join(',')
+          : c.note + '；' + JSON.stringify(o.error)
+      );
+      tested += 1;
     }
+    if (!tested) stage('per-plugin vendor 生效', true, '工作区里没有带 vendor 的插件，跳过');
 
     report.ok = report.stages.every((s) => s.ok);
   } catch (err) {
