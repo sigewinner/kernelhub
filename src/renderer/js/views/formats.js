@@ -49,9 +49,7 @@ export async function mount(host, ctx) {
 
   const wrap = h('div.view-inner', { dataset: { view: 'formats' } },
     h('div.view-head', null,
-      h('div.view-crumb', { textContent: 'KernelHub Studio' }),
       h('h1.view-title', { textContent: '格式' }),
-      h('div.view-sub', { textContent: '格式 × 操作 的可达关系，全部由内核清单的能力矩阵推出。' }),
       h('div.view-rule')
     ),
     h('div.toolbar', null,

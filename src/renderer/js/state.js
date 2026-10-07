@@ -62,6 +62,13 @@ export const state = createStore({
   activeView: 'convert',
   maximized: false,
   lastOutputDir: '',
+  /**
+   * 当前视图推到右下角状态栏的**实时信息**（2.0.4）。
+   * 各视图本来把这些放在自己底部的 .footline 里，位置随视图内容浮动、也不统一；
+   * 现在统一推到状态栏右侧固定位置，视图切换时由 app.js 清空。
+   * 元素可以是字符串，或 { text, title, tone }。
+   */
+  statusInfo: [],
 }, {
   onWarn: (msg) => console.warn('[state]', msg),
 });

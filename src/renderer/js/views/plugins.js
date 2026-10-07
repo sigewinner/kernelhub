@@ -72,11 +72,7 @@ export async function mount(host, ctx) {
 
   const wrap = h('div.view-inner', { dataset: { view: 'plugins' } },
     h('div.view-head', null,
-      h('div.view-crumb', { textContent: 'KernelHub Studio' }),
       h('h1.view-title', { textContent: '插件' }),
-      h('div.view-sub', {
-        textContent: '壳本身不含内核；插件从独立仓库按需下载到用户工作区，每个插件自带自己的依赖。',
-      }),
       h('div.view-rule')
     ),
     h('div.toolbar', null, tabBar.el),
@@ -111,7 +107,6 @@ export async function mount(host, ctx) {
 
   const infoStrip = h('div.strip');
   const tableHost = h('div');
-  const footEl = h('div.footline');
 
   catalogHost.appendChild(h('div.toolbar', null,
     h('div', { style: { width: '260px' } }, searchInput),
@@ -120,7 +115,6 @@ export async function mount(host, ctx) {
   ));
   catalogHost.appendChild(infoStrip);
   catalogHost.appendChild(tableHost);
-  catalogHost.appendChild(footEl);
 
   /* --------------------------------------------------- 标签页切换 */
 
@@ -136,9 +130,13 @@ export async function mount(host, ctx) {
         // 复用原来的内核页，只是把它的标题栏去掉（embed），避免两层标题
         const mod = await import('./kernels.js');
         kernelsInstance = await mod.mount(installedHost, { ...ctx, embed: true });
+      } else if (typeof kernelsInstance.publishStatus === 'function') {
+        // 切回「已安装」时把它的实时信息重新推上去，否则右下角还留着「可安装」的数字
+        kernelsInstance.publishStatus();
       }
     } else {
       if (!data) await reload(false);
+      else publishCatalogStatus();
     }
   }
 
@@ -173,22 +171,43 @@ export async function mount(host, ctx) {
     });
   }
 
+  /**
+   * 目录状态条。
+   *
+   * 2.0.4 起这里**只在异常时出现**：正常情况的「下载方式 / 已安装 N / 共 M / 目录更新于」
+   * 都是实时信息，统一推到状态栏右下角了（见 renderCatalog 末尾）。
+   * 否则每条正常信息都占一行，页面顶部永远挂着一块没人看的横条。
+   */
   function renderInfo() {
     clear(infoStrip);
+    infoStrip.hidden = true;
     if (!data) return;
+
     if (data.error) {
+      infoStrip.hidden = false;
       infoStrip.className = 'strip strip--warn';
       infoStrip.appendChild(h('span', { textContent: `目录拉取失败：${data.error}（显示的是本地缓存）` }));
       return;
     }
-    infoStrip.className = data.source === 'cache' ? 'strip strip--warn' : 'strip strip--ok';
+    if (data.source === 'cache') {
+      infoStrip.hidden = false;
+      infoStrip.className = 'strip strip--warn';
+      const bits = ['用的是本地缓存的目录——点「刷新目录」可重新拉取'];
+      if (data.catalog && data.catalog.updated) bits.push(`缓存更新于 ${data.catalog.updated}`);
+      infoStrip.appendChild(h('span', { textContent: bits.join('　·　') }));
+    }
+  }
+
+  /** 把目录信息推进状态栏右下角（正常态的那部分实时信息） */
+  function publishCatalogStatus(filteredCount) {
+    if (!data) return;
     const bits = [
-      `下载方式：${data.mode === 'git' ? 'git 稀疏克隆' : `HTTPS 多连接（${(store.pick('settings') || {}).pluginDownloadConns || 4} 连接）`}${data.git ? '' : '（未检测到 git）'}`,
-      `已安装 ${data.installedCount} / 共 ${data.plugins.length}`,
+      `已安装 ${data.installedCount} / 共 ${data.plugins.length} 个插件`,
+      `当前显示 ${Number.isFinite(filteredCount) ? filteredCount : data.plugins.length} 个`,
+      `下载方式 ${data.mode === 'git' ? 'git 稀疏克隆' : 'HTTPS 多连接'}`,
     ];
     if (data.catalog && data.catalog.updated) bits.push(`目录更新于 ${data.catalog.updated}`);
-    if (data.source === 'cache') bits.push('用的是本地缓存的目录');
-    infoStrip.appendChild(h('span', { textContent: bits.join('　·　') }));
+    ctx.setStatusInfo(bits);
   }
 
   /**
@@ -330,9 +349,7 @@ export async function mount(host, ctx) {
       tbody
     ));
 
-    clear(footEl);
-    footEl.appendChild(h('span', { textContent: `显示 ${list.length} / 共 ${data.plugins.length} 个插件` }));
-    footEl.appendChild(h('span', { textContent: `· 安装位置 ${data.pluginsDir || ''}` }));
+    publishCatalogStatus(list.length);
   }
 
   /* ------------------------------------------------- 可安装：动作 */

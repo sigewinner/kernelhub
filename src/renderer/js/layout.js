@@ -77,6 +77,7 @@ export function createLayout(options = {}) {
 
   const disposers = [];
   let navEls = new Map();
+  let navIndicator = null;
   let lastState = {};
   let maximized = false;
 
@@ -146,6 +147,10 @@ export function createLayout(options = {}) {
     clear(els.nav);
     navEls = new Map();
 
+    // 指示块放在最前：绝对定位、z-index 0，压在导航项下面
+    navIndicator = h('div.nav__indicator');
+    els.nav.appendChild(navIndicator);
+
     for (const item of NAV_ITEMS) {
       if (item.id === 'settings') els.nav.appendChild(h('div.nav__sep'));
       const itemEl = h('button.nav__item', {
@@ -178,12 +183,38 @@ export function createLayout(options = {}) {
     els.cmdkTrigger = commandEl;
   }
 
-  /** 高亮当前视图（黑底反白块，全站统一） */
+  /**
+   * 把选中指示块挪到当前视图那一项上（滑动，不是硬切）。
+   * @param {boolean} animate false 用于首次定位与窗口尺寸变化后重摆
+   */
+  function moveIndicator(animate = true) {
+    if (!navIndicator) return;
+    const refs = navEls.get(lastState.activeView || 'convert');
+    const target = refs && refs.itemEl;
+    if (!target) return;
+    const transform = `translateY(${target.offsetTop}px)`;
+    const height = `${target.offsetHeight}px`;
+    // renderShell() 会被频繁调用（右下角实时信息一更新就重绘），
+    // 位置没变就别再写样式，省得反复触发过渡
+    if (navIndicator.style.transform === transform && navIndicator.style.height === height) return;
+    if (!animate) navIndicator.style.transition = 'none';
+    navIndicator.style.transform = transform;
+    navIndicator.style.height = height;
+    if (!animate) {
+      // 强制重排让「无过渡」的设置立刻生效，再恢复过渡
+      void navIndicator.offsetHeight;
+      navIndicator.style.transition = '';
+    }
+  }
+
+  /** 高亮当前视图（文字反白；背景块由 moveIndicator 负责滑过去） */
   function setActive(viewId) {
     for (const [id, refs] of navEls) {
       if (id === viewId) refs.itemEl.setAttribute('aria-current', 'page');
       else refs.itemEl.removeAttribute('aria-current');
     }
+    lastState.activeView = viewId;
+    moveIndicator(true);
   }
 
   /** 侧栏底部状态行：一句话 + 等宽数字 */
@@ -250,6 +281,22 @@ export function createLayout(options = {}) {
 
     els.statusbar.appendChild(h('div.statusbar__spacer'));
 
+    /**
+     * 右下角：当前视图推上来的实时信息（2.0.4）。
+     * 本来散在各视图底部的 .footline 里 —— 位置随内容浮动，切视图就换个地方，
+     * 用户找不到「现在到底什么情况」。统一收到右侧固定位置，用 · 分隔。
+     */
+    const info = Array.isArray(state.statusInfo) ? state.statusInfo : [];
+    if (info.length) {
+      els.statusbar.appendChild(h('div.statusbar__item.statusbar__info', null,
+        info.map((item, index) => h('span', {
+          class: item.tone ? `statusbar__seg statusbar__seg--${item.tone}` : 'statusbar__seg',
+          title: item.title || item.text,
+          textContent: (index ? '· ' : '') + String(item.text),
+        }))
+      ));
+    }
+
     if (state.queuePaused) {
       els.statusbar.appendChild(h('div.statusbar__item', null,
         h('span', { class: 'dot dot--warn' }),
@@ -314,6 +361,10 @@ export function createLayout(options = {}) {
     bindGlobal();
     setTheme(document.documentElement.getAttribute('data-theme') || 'light');
     render({});
+    // 首次定位不要动画：从顶部滑到当前项，看着像页面自己在动
+    moveIndicator(false);
+    // 窗口尺寸变化后重新量一次（不滑动）
+    disposers.push(on(window, 'resize', () => moveIndicator(false)));
   }
 
   function destroy() {

@@ -10,11 +10,27 @@
 <title>KernelHub Studio</title>
 <link rel="stylesheet" href="styles/tokens.css" />
 <link rel="stylesheet" href="styles/base.css" />
+<link rel="stylesheet" href="styles/splash.css" />
 <link rel="stylesheet" href="styles/layout.css" />
 <link rel="stylesheet" href="styles/components.css" />
 <link rel="stylesheet" href="styles/views.css" />
 </head>
 <body>
+
+<!-- 开启动画（2.0.4）：随 HTML 立刻出现，不依赖 JS —— 启动期间不会白屏。
+     由 js/splash.js 在界面就绪后收起；另有纯 CSS 的兜底（6s 后自行淡出），
+     保证即使脚本出错也不会永久挡住界面。 -->
+<div id="splash" class="splash" role="status" aria-live="polite" aria-label="KernelHub Studio 正在启动">
+  <div class="splash__inner">
+    <div class="splash__mark">KernelHub <span class="splash__mark-sub">Studio</span></div>
+    <div class="splash__rule"></div>
+    <div class="splash__meta">
+      <span id="splash-status">正在启动</span>
+      <span id="splash-ckp">CKP 1.0</span>
+    </div>
+  </div>
+  <div class="splash__progress"><i id="splash-bar"></i></div>
+</div>
 
 <!-- 能力探测：window.khs 由 preload 通过 contextBridge 注入（浏览器开发宿主由
      devhost/khs-browser.js 注入）。探测逻辑在 js/boot.js 里，不用内联脚本，

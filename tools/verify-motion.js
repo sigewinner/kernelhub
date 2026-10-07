@@ -112,7 +112,38 @@ async function main() {
       segFrames ? `${segFrames.length} 个不同帧（x,y）：${segFrames.map((f) => shift(f.v)).join(' → ')}` : '取不到指示条'
     );
 
-    /* ------------------------------------------------------ 2) 进度条宽度 */
+    /* ------------------------------------------------ 2) 侧栏指示块滑动 */
+    const navFrames = await browser.eval(`
+      const target = Array.from(document.querySelectorAll('.nav__item')).find((b) => b.innerText.includes('协议'));
+      const ind = document.querySelector('.nav__indicator');
+      if (!target || !ind) return null;
+      const seen = [];
+      const t0 = performance.now();
+      const sampler = new Promise((resolve) => {
+        function tick() {
+          const v = getComputedStyle(ind).transform;
+          if (!seen.length || seen[seen.length - 1].v !== v) seen.push({ t: Math.round(performance.now() - t0), v });
+          if (performance.now() - t0 >= 700) resolve();
+          else requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+      });
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      target.click();
+      await sampler;
+      return seen;
+    `);
+    const navMoved = (navFrames || []).filter((f) => {
+      const [, y] = shift(f.v).split(',');
+      return Number(y) > 0;
+    });
+    check(
+      '侧栏选中指示块逐帧滑动（有中间帧）',
+      (navFrames || []).length >= 3 && navMoved.length >= 2,
+      navFrames ? `${navFrames.length} 个不同帧（x,y）：${navFrames.map((f) => shift(f.v)).join(' → ')}` : '取不到指示块'
+    );
+
+    /* ------------------------------------------------------ 3) 进度条宽度 */
     const barFrames = await browser.eval(`
       const track = document.createElement('div');
       track.className = 'progress progress--install';
@@ -148,7 +179,35 @@ async function main() {
       barFrames ? `${barFrames.length} 个不同宽度：${barFrames.slice(0, 6).map((f) => f.v).join(' → ')}…` : '取不到进度条'
     );
 
-    /* ------------------------------------------ 3) 通知：同类覆盖 + 让位动画 */
+    /* ------------------------------- 4) 通知：从右滑入 + 同类覆盖 + 让位动画 */
+
+    // 进场：应当从右侧（x > 0）滑到 0，而不是从下方冒出来
+    const enterFrames = await browser.eval(`
+      const T = window.__khsTest;
+      T.toastClear();
+      await new Promise((r) => requestAnimationFrame(r));
+      const seen = [];
+      const t0 = performance.now();
+      T.toastShow('success', '进场采样');
+      const el = document.querySelector('.toast');
+      if (!el) return null;
+      return await new Promise((resolve) => {
+        function tick() {
+          const v = getComputedStyle(el).transform;
+          if (!seen.length || seen[seen.length - 1].v !== v) seen.push({ t: Math.round(performance.now() - t0), v });
+          if (performance.now() - t0 >= 600) resolve(seen);
+          else requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+      });
+    `);
+    const enterXs = (enterFrames || []).map((f) => Number(String(shift(f.v)).split(',')[0]));
+    check(
+      '通知卡片从右侧滑入（x 由正到 0）',
+      (enterFrames || []).length >= 3 && enterXs[0] > 1 && enterXs[enterXs.length - 1] === 0,
+      enterFrames ? `${enterFrames.length} 帧（x,y）：${enterFrames.map((f) => shift(f.v)).join(' → ')}` : '没采到帧'
+    );
+
     const toastProbe = await browser.eval(`
       const T = window.__khsTest;
       T.toastClear();
@@ -158,23 +217,32 @@ async function main() {
       T.toastShow('warn', '一条警告');
       T.toastShow('info', '一条提示');
       const total = T.toastCount();
+      // 先等进场动画播完（--t-slow 260ms），否则采到的是进场帧、不是让位帧
+      await new Promise((r) => setTimeout(r, 600));
+
       const cards = Array.from(document.querySelectorAll('.toast'));
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-      const last = cards[cards.length - 1];
-      if (!last) return { afterSame, total, frames: null };
+      if (cards.length < 2) return { afterSame, total, frames: null };
+      /*
+       * 采样对象要选对：宿主锚在右下角、卡片自上而下排列（容器变矮时顶部下移、
+       * 卡在容器内的位置又上移一格）。所以
+       *   · 移除**最上面**那张 → 余下卡片的绝对位置**一点没变**（净位移为零）
+       *   · 移除**最下面**那张 → 它上面的卡片整体下移一格
+       * 要让位动画可观测，必须移除最下面那张、采样它上面的卡片。
+       */
+      const top = cards[0];
+      const bottom = cards[cards.length - 1];
       const seen = [];
       const t0 = performance.now();
       const sampler = new Promise((resolve) => {
         function tick() {
-          const v = getComputedStyle(last).transform;
+          const v = getComputedStyle(top).transform;
           if (!seen.length || seen[seen.length - 1].v !== v) seen.push({ t: Math.round(performance.now() - t0), v });
-          if (performance.now() - t0 >= 800) resolve();
+          if (performance.now() - t0 >= 900) resolve();
           else requestAnimationFrame(tick);
         }
         requestAnimationFrame(tick);
       });
-      // 关掉最上面那张（它下面的卡片应当平滑让位）
-      const closeBtn = document.querySelector('.toast .toast__close');
+      const closeBtn = bottom.querySelector('.toast__close');
       if (closeBtn) closeBtn.click();
       await sampler;
       return { afterSame, total, frames: seen };
@@ -186,7 +254,7 @@ async function main() {
     );
     const shiftFrames = (toastProbe && toastProbe.frames) || [];
     check(
-      '移除一张后余下卡片平滑让位（有中间帧）',
+      '移除一张后其余卡片平滑让位（有中间帧）',
       shiftFrames.length >= 3,
       shiftFrames.length ? `${shiftFrames.length} 个不同 transform（x,y）：${shiftFrames.slice(0, 8).map((f) => shift(f.v)).join(' → ')}…` : '没采到帧'
     );

@@ -15,6 +15,7 @@
 
 import { qs, clear, on, h } from './dom.js';
 import { toast } from './toast.js';
+import { dismissSplash, setSplashCkp, setSplashStatus } from './splash.js';
 import { modal } from './modal.js';
 import { state, pushLogEntry, replaceLogs, countsFromJobs } from './state.js';
 import { createLayout, NAV_ITEMS } from './layout.js';
@@ -166,6 +167,7 @@ function clearPending() {
 async function boot() {
   state.set({ bootPhase: 'loading', bootError: null });
   renderShell();
+  setSplashStatus('读取运行环境', 12);
 
   try {
     const [info, layout2] = await Promise.all([
@@ -186,6 +188,8 @@ async function boot() {
     });
     applyTheme(settings && settings.theme);
     renderShell();
+    setSplashCkp((info && info.ckp) || '');
+    setSplashStatus('载入内核与队列', 45);
   } catch (err) {
     state.set({ bootPhase: 'error', bootError: wrapError(err, '读取应用信息失败') });
     renderShell();
@@ -199,6 +203,7 @@ async function boot() {
     loadLogs({ silent: true }),
   ]);
 
+  setSplashStatus('准备界面', 85);
   state.set({ bootPhase: 'ready' });
   renderShell();
 }
@@ -492,6 +497,25 @@ function makeContext(viewId) {
       return file && typeof file.path === 'string' ? file.path : '';
     },
     refreshKernels,
+
+    /**
+     * 把本视图的实时信息推到右下角状态栏（2.0.4）。
+     * 视图底部的 .footline 已经取消，实时信息统一走这里。
+     * @param {Array<string|{text:string,title?:string,tone?:string}>} items 传 [] 表示清空
+     */
+    setStatusInfo(items) {
+      // 只有**当前激活**的视图能写右下角。视图实例万一没被及时卸载，
+      // 它也不能再改状态栏（与 renderRoute 的令牌一起构成双重保险）。
+      if (state.pick('activeView') !== viewId) return;
+      const list = (Array.isArray(items) ? items : [items])
+        .filter(Boolean)
+        .map((it) => (typeof it === 'object' ? it : { text: String(it) }))
+        .filter((it) => it && it.text !== '' && it.text != null);
+      // 内容没变就不重绘状态栏：视图可能在每次进度回调里都推一次，
+      // 无脑重建会让右下角一直闪
+      if (JSON.stringify(list) === JSON.stringify(state.pick('statusInfo') || [])) return;
+      state.set({ statusInfo: list });
+    },
     openPalette: () => layout.openPalette(),
     registerAction,
     toast,
@@ -501,10 +525,21 @@ function makeContext(viewId) {
   };
 }
 
+/**
+ * 路由渲染令牌。
+ *
+ * renderRoute 中间有两个 await（动态 import、视图 mount），这期间完全可能又来一次
+ * 导航请求。没有令牌的话两边都会 mount，后完成的那个覆盖 currentInstance，
+ * 先完成的实例就永远不会被 unmount —— 它的 store 订阅会一直活着，
+ * 之后每次状态变化都继续跑（表现为「切走之后旧视图还在改状态栏」）。
+ */
+let routeToken = 0;
+
 async function renderRoute() {
+  const token = ++routeToken;
   const viewId = parseHash();
   const host = qs('#view');
-  if (!host) return;
+  if (!host) return false;
 
   if (currentInstance && typeof currentInstance.unmount === 'function') {
     try {
@@ -515,7 +550,8 @@ async function renderRoute() {
   }
   currentInstance = null;
   currentViewId = viewId;
-  state.set({ activeView: viewId });
+  // 换视图时把右下角的实时信息清空，避免上一个视图的数字残留
+  state.set({ activeView: viewId, statusInfo: [] });
   layout.setActive(viewId);
 
   clear(host);
@@ -526,26 +562,41 @@ async function renderRoute() {
   try {
     mod = await VIEWS[viewId]();
   } catch (err) {
+    if (token !== routeToken) return false;
     clear(host);
     host.appendChild(buildViewError(viewId, wrapError(err, `加载视图「${viewId}」失败`)));
     reportError('视图加载失败', wrapError(err));
-    return;
+    return false;
   }
+  // 动态 import 期间可能又有新的导航，本次渲染作废
+  if (token !== routeToken) return false;
 
   const mount = mod && (mod.mount || (mod.default && mod.default.mount));
   if (typeof mount !== 'function') {
     clear(host);
     host.appendChild(buildViewError(viewId, new Error(`视图模块 ${viewId}.js 没有导出 mount()`)));
-    return;
+    return false;
   }
 
   clear(host);
   let mounted = false;
   try {
     const instance = await mount(host, makeContext(viewId));
+    if (token !== routeToken) {
+      // 已被更新的导航取代：把刚挂上的实例卸掉，别留下活着的订阅
+      if (instance && typeof instance.unmount === 'function') {
+        try {
+          instance.unmount();
+        } catch {
+          /* 忽略 */
+        }
+      }
+      return false;
+    }
     currentInstance = instance || null;
     mounted = true;
   } catch (err) {
+    if (token !== routeToken) return false;
     clear(host);
     host.appendChild(buildViewError(viewId, wrapError(err, `渲染视图「${viewId}」失败`)));
     reportError('视图渲染失败', wrapError(err));
@@ -1153,6 +1204,45 @@ function installTestHooks() {
       return { label: btn.innerText.trim(), active: btn.dataset.active === 'true' };
     },
 
+    /** 侧栏选中指示块的状态（自检用：验证它滑到了当前项上） */
+    navIndicator() {
+      const ind = document.querySelector('.nav__indicator');
+      const active = document.querySelector('.nav__item[aria-current="page"]');
+      if (!ind) return null;
+      const cs = getComputedStyle(ind);
+      return {
+        inlineTransform: ind.style.transform,
+        inlineHeight: ind.style.height,
+        activeLabel: active ? active.innerText.replace(/\s+/g, ' ').trim() : null,
+        activeOffsetTop: active ? active.offsetTop : null,
+        activeOffsetHeight: active ? active.offsetHeight : null,
+        transitionDuration: cs.transitionDuration,
+        transitionTimingFunction: cs.transitionTimingFunction,
+      };
+    },
+
+    /** 开启动画当前状态（自检用：验证它已收起、不挡界面） */
+    splashState() {
+      const el = document.getElementById('splash');
+      if (!el) return { present: false };
+      const bar = document.getElementById('splash-bar');
+      const status = document.getElementById('splash-status');
+      return {
+        present: true,
+        done: el.classList.contains('splash--done'),
+        opacity: getComputedStyle(el).opacity,
+        status: status ? status.textContent : '',
+        barWidth: bar ? bar.style.width : '',
+      };
+    },
+
+    /** 右下角实时信息当前的内容（自检用：验证它跟着视图走） */
+    statusInfo() {
+      return Array.from(document.querySelectorAll('#statusbar .statusbar__seg')).map((el) =>
+        el.textContent.trim()
+      );
+    },
+
     /** 路由跳转并等待视图挂载完成 */
     async goto(hash) {
       const target = String(hash || '#/convert');
@@ -1185,6 +1275,8 @@ async function main() {
   if (!bridged) {
     if (fallback) fallback.hidden = false;
     console.warn('[ui] 未检测到 window.khs，运行在浏览器降级模式');
+    // 没有桥接时也要收起开启动画，否则降级提示页被挡在后面看不见
+    dismissSplash();
     return;
   }
 
@@ -1215,6 +1307,11 @@ async function main() {
   window.addEventListener('hashchange', () => renderRoute());
   if (!location.hash) location.replace(`#/${DEFAULT_VIEW}`);
 
+  // 视图把实时信息推到状态栏右下角时，重绘一次外壳（只重画状态栏那一段数据）
+  state.subscribe((s, changed) => {
+    if (changed.includes('statusInfo')) renderShell();
+  });
+
   bindHotkeys();
   bindBridgeEvents();
 
@@ -1222,6 +1319,9 @@ async function main() {
   await renderRoute();
 
   installTestHooks();
+
+  // 界面已就绪：收起开启动画（有最短展示时间，避免快机器上一闪而过）
+  dismissSplash();
 
   window.__khsState = state;
   window.__khsUi = Object.freeze({

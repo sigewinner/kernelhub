@@ -62,13 +62,10 @@ export async function mount(host, ctx) {
   }, h('span', { textContent: '复制' }));
 
   const listEl = h('div.loglist');
-  const footEl = h('div.footline');
 
   const wrap = h('div.view-inner', { dataset: { view: 'logs' } },
     h('div.view-head', null,
-      h('div.view-crumb', { textContent: 'KernelHub Studio' }),
       h('h1.view-title', { textContent: '日志' }),
-      h('div.view-sub', { textContent: '主进程日志与全部作业日志，按时间顺序排列。' }),
       h('div.view-rule')
     ),
     h('div.toolbar', null,
@@ -77,8 +74,7 @@ export async function mount(host, ctx) {
       h('div', { style: { width: '240px' } }, searchInput),
       h('div.toolbar__right', null, clearBtn, copyBtn)
     ),
-    listEl,
-    footEl
+    listEl
   );
   host.appendChild(wrap);
 
@@ -135,13 +131,13 @@ export async function mount(host, ctx) {
       listEl.appendChild(frag);
     }
 
-    clear(footEl);
+    // 实时信息推到状态栏右下角（2.0.4 起不再各视图自己放一行 .footline）
     const limit = Number((store.pick('settings') || {}).keepLogLines) || 4000;
-    footEl.appendChild(h('span', { textContent: `显示 ${rows.length} 行 / 共 ${total} 行` }));
-    footEl.appendChild(h('span', { textContent: `· 最多保留 ${limit} 行` }));
-    if (!pinned) {
-      footEl.appendChild(h('span', { textContent: '· 已暂停跟随，滚动到底部可恢复' }));
-    }
+    ctx.setStatusInfo([
+      `显示 ${rows.length} 行 / 共 ${total} 行`,
+      `最多保留 ${limit} 行`,
+      pinned ? null : { text: '已暂停跟随，滚动到底部可恢复', tone: 'warn' },
+    ]);
 
     if (pinned) host.scrollTop = host.scrollHeight;
   }

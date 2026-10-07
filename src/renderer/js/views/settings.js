@@ -43,9 +43,7 @@ export async function mount(host, ctx) {
 
   const wrap = h('div.view-inner', { dataset: { view: 'settings' } },
     h('div.view-head', null,
-      h('div.view-crumb', { textContent: 'KernelHub Studio' }),
       h('h1.view-title', { textContent: '设置' }),
-      h('div.view-sub', { textContent: '左侧选分类，右侧只显示该分类的字段；所有改动立即写回主进程。' }),
       h('div.view-rule')
     ),
     h('div.settings-grid', null, navEl, paneEl)

@@ -41,13 +41,10 @@ export async function mount(host, ctx) {
   for (let n = 1; n <= 8; n += 1) parallelSelect.appendChild(h('option', { value: String(n), textContent: String(n) }));
 
   const tableHost = h('div');
-  const footEl = h('div.footline');
 
   const wrap = h('div.view-inner', { dataset: { view: 'batch' } },
     h('div.view-head', null,
-      h('div.view-crumb', { textContent: 'KernelHub Studio' }),
       h('h1.view-title', { textContent: '队列' }),
-      h('div.view-sub', { textContent: '作业在后端按并发度执行，这里只展示状态与产物。' }),
       h('div.view-rule')
     ),
     h('div.toolbar', null,
@@ -59,8 +56,7 @@ export async function mount(host, ctx) {
         h('div.selectwrap', { style: { width: '80px' } }, parallelSelect)
       )
     ),
-    tableHost,
-    footEl
+    tableHost
   );
   host.appendChild(wrap);
 
@@ -302,14 +298,15 @@ export async function mount(host, ctx) {
       ));
     }
 
-    clear(footEl);
-    footEl.appendChild(h('span', { textContent: `${thousands(jobs.length)} 个作业` }));
-    footEl.appendChild(h('span', { textContent: '·' }));
-    footEl.appendChild(h('span', { textContent: `待处理 ${thousands(counts.queued || 0)}` }));
-    footEl.appendChild(h('span', { textContent: `运行 ${thousands(counts.running || 0)}` }));
-    footEl.appendChild(h('span', { textContent: `已完成 ${thousands(counts.done || 0)}` }));
-    footEl.appendChild(h('span', { textContent: `失败 ${thousands(counts.failed || 0)}` }));
-    if (paused) footEl.appendChild(h('span.accent', { textContent: '· 队列已暂停' }));
+    // 实时信息推到状态栏右下角（2.0.4 起不再各视图自己放一行 .footline）
+    ctx.setStatusInfo([
+      `${thousands(jobs.length)} 个作业`,
+      `待处理 ${thousands(counts.queued || 0)}`,
+      `运行 ${thousands(counts.running || 0)}`,
+      `已完成 ${thousands(counts.done || 0)}`,
+      `失败 ${thousands(counts.failed || 0)}`,
+      paused ? { text: '队列已暂停', tone: 'warn' } : null,
+    ]);
   }
 
   /* --------------------------------------------------------------- 事件 */

@@ -237,7 +237,6 @@ export async function mount(host, ctx) {
 
   const tocEl = h('nav.toc', { 'aria-label': '文档目录' });
   const docEl = h('div');
-  const footEl = h('div.footline');
 
   const copyDocBtn = h('button.btn', {
     type: 'button',
@@ -253,9 +252,7 @@ export async function mount(host, ctx) {
 
   const wrap = h('div.view-inner', { dataset: { view: 'protocol' } },
     h('div.view-head', null,
-      h('div.view-crumb', { textContent: 'KernelHub Studio' }),
       h('h1.view-title', { textContent: '协议' }),
-      h('div.view-sub', { textContent: 'CKP 1.0 规范原文与三份机器可校验 Schema，渲染前已做纯文本化处理。' }),
       h('div.view-rule')
     ),
     h('div.toolbar', null,
@@ -265,8 +262,7 @@ export async function mount(host, ctx) {
     h('div.grid12', null,
       h('div.c4', null, tocEl),
       h('div.c8', null, docEl)
-    ),
-    footEl
+    )
   );
   host.appendChild(wrap);
 
@@ -398,17 +394,17 @@ export async function mount(host, ctx) {
   }
 
   function renderFoot() {
-    clear(footEl);
     const ckp = store.pick('ckp') || '';
     const ready = Number(store.pick('kernelsReady') || 0);
     const total = Number(store.pick('kernelsTotal') || 0);
     const layout = store.pick('layout') || {};
-    footEl.appendChild(h('span', { textContent: ckp ? `协议版本 CKP ${ckp}` : '协议版本 —' }));
-    footEl.appendChild(h('span', { textContent: '·' }));
-    footEl.appendChild(h('span', { textContent: `可用内核 ${ready} / ${total}` }));
-    footEl.appendChild(h('span', { textContent: '·' }));
-    footEl.appendChild(h('span', { textContent: `Python ${orDash(layout.pythonVersion)}` }));
-    if (vs.path) footEl.appendChild(h('span', { textContent: `· 文档 ${vs.path}` }));
+    // 实时信息推到状态栏右下角（2.0.4 起不再各视图自己放一行 .footline）
+    ctx.setStatusInfo([
+      ckp ? `协议版本 CKP ${ckp}` : '协议版本 —',
+      `可用内核 ${ready} / ${total}`,
+      `Python ${orDash(layout.pythonVersion)}`,
+      vs.path ? { text: `文档 ${vs.path}`, mono: true } : null,
+    ]);
   }
 
   async function load() {

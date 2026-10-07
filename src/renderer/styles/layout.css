@@ -92,8 +92,27 @@
 }
 
 .nav {
+  position: relative; /* 选中指示块的定位基准 */
   display: flex;
   flex-direction: column;
+}
+
+/**
+ * 选中指示块（2.0.4）。
+ * 原来选中态是给 .nav__item 直接换背景色 —— 硬切，视线要重新找当前位置。
+ * 现在背景交给这一块，它在导航项之间**滑动**（与分段选项卡同一套反馈，方向竖直）。
+ * 直角、纯 --c-ink、无阴影，视觉语言不变。
+ */
+.nav__indicator {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 36px;
+  background: var(--c-ink);
+  transition: transform var(--t-slow) var(--e-in-out), height var(--t-slow) var(--e-in-out);
+  will-change: transform, height;
+  z-index: 0;
 }
 
 .nav__group {
@@ -111,6 +130,8 @@
 }
 
 .nav__item {
+  position: relative;
+  z-index: 1; /* 压在指示块之上 */
   display: flex;
   align-items: center;
   gap: var(--sp-3);
@@ -124,16 +145,19 @@
   font-size: var(--fs-13);
   text-align: left;
   cursor: pointer;
-  transition: background var(--t-fast) ease-out, color var(--t-fast) ease-out;
+  /* 文字颜色与指示块同速：块滑到哪，哪一项的字就变反白 */
+  transition: color var(--t-slow) var(--e-in-out);
 }
 
 .nav__item:hover {
   background: var(--c-hover);
 }
 
-.nav__item[aria-current="page"] {
-  background: var(--c-ink);
+/* 选中态只改文字颜色 —— 背景由滑动指示块负责，两套高亮不要打架 */
+.nav__item[aria-current="page"],
+.nav__item[aria-current="page"]:hover {
   color: var(--c-inverse);
+  background: transparent;
 }
 
 .nav__item[aria-current="page"] .nav__num,
@@ -147,6 +171,8 @@
   font-family: var(--font-mono);
   font-size: var(--fs-12);
   color: var(--c-ink-3);
+  /* 与指示块同速，否则编号会先变色、块还没滑到 */
+  transition: color var(--t-slow) var(--e-in-out);
 }
 
 .nav__label {
@@ -162,6 +188,7 @@
   font-family: var(--font-mono);
   font-size: var(--fs-12);
   color: var(--c-ink-3);
+  transition: color var(--t-slow) var(--e-in-out);
 }
 
 /* 侧栏底部状态行 */
@@ -225,6 +252,40 @@
 
 .statusbar__spacer {
   flex: 1 1 auto;
+}
+
+/**
+ * 右下角的实时信息（2.0.4）。
+ * 内容由当前视图推上来，长度不可控（协议页会带文档路径），所以：
+ * 允许收缩、超出省略、不换行，别把状态栏撑破。
+ */
+.statusbar__info {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.statusbar__seg {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statusbar__seg--ok {
+  color: var(--c-ok);
+}
+
+.statusbar__seg--warn {
+  color: var(--c-warn);
+}
+
+.statusbar__seg--err {
+  color: var(--c-accent);
+}
+
+.statusbar__seg--mono {
+  font-family: var(--font-mono);
 }
 
 .statusbar__mono {
@@ -381,12 +442,12 @@
   padding: var(--sp-3);
   background: var(--c-paper);
   border: var(--line);
-  /* 进场：淡入 + 从下方轻轻推上来（宿主锚在右下角，新卡片从底部涌现最自然） */
+  /* 进场：从右侧滑入（宿主锚在右下角，从右边推进来最贴合视线的来向） */
   animation: toast-in var(--t-slow) var(--e-out) both;
 }
 
 .toast--leaving {
-  /* 出场：淡出 + 向下让位。用 animation 而不是 transition，
+  /* 出场：向右滑回去。用 animation 而不是 transition，
      这样嵌套在里面的内容不需要各自写过渡，一次动画整体生效 */
   animation: toast-out var(--t-base) var(--e-in-out) both;
 }
@@ -394,22 +455,22 @@
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translateY(var(--d-shift));
+    transform: translateX(var(--d-slide));
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(0);
   }
 }
 
 @keyframes toast-out {
   from {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(0);
   }
   to {
     opacity: 0;
-    transform: translateY(var(--d-shift));
+    transform: translateX(var(--d-slide));
   }
 }
 

@@ -1,0 +1,136 @@
+/**
+ * splash.css —— 开启动画（2.0.4）
+ *
+ * 目标：启动期间不白屏，并让「打开软件」这件事有一点仪式感。
+ *
+ * 手法全部落在项目既有的语言里 —— 直角、纯色、无阴影、无渐变、无缩放：
+ *   1. 字标从较大的字距**收拢**到正常字距（letter-spacing 动画，不是缩放），
+ *      同时淡入 —— 这是全部动效里最「贵」的一笔，但只有一处
+ *   2. 字标下方一条 1px 细线从中间向两侧展开
+ *   3. 底部一行等宽小字（阶段文案 + 协议版本）
+ *   4. 最底部 1px 进度线，宽度由 js/splash.js 按真实启动阶段推进（不撒谎）
+ *   5. 就绪后整体淡出
+ *
+ * 兜底：即使脚本报错、无人收起，6 秒后也会自行淡出（纯 CSS），
+ * 绝不允许开启动画把界面挡死。
+ */
+
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--c-paper);
+  /* 收起时整体淡出 */
+  transition: opacity 460ms var(--e-out);
+  animation: splash-failsafe 400ms linear 6s forwards;
+}
+
+.splash--done {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@keyframes splash-failsafe {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+/* 宽度贴合字标，这样下面的细线知道该展开到多宽 */
+.splash__inner {
+  display: inline-block;
+  max-width: 90vw;
+}
+
+.splash__mark {
+  font-size: 30px;
+  font-weight: 400;
+  line-height: 1.1;
+  text-transform: uppercase;
+  letter-spacing: 0.34em;
+  color: var(--c-ink);
+  white-space: nowrap;
+  opacity: 0;
+  animation: splash-mark 1100ms var(--e-out) 100ms forwards;
+}
+
+.splash__mark-sub {
+  color: var(--c-ink-2);
+}
+
+/* 字距收拢 + 淡入：像字在「落位」，比单纯的淡入更有分量 */
+@keyframes splash-mark {
+  from {
+    opacity: 0;
+    letter-spacing: 0.34em;
+  }
+  to {
+    opacity: 1;
+    letter-spacing: 0.16em;
+  }
+}
+
+.splash__rule {
+  height: 1px;
+  width: 0;
+  margin-top: var(--sp-4);
+  background: var(--c-ink);
+  animation: splash-rule 900ms var(--e-in-out) 280ms forwards;
+}
+
+@keyframes splash-rule {
+  to {
+    width: 100%;
+  }
+}
+
+.splash__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-5);
+  margin-top: var(--sp-4);
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  color: var(--c-ink-3);
+  opacity: 0;
+  animation: splash-fade 600ms var(--e-out) 760ms forwards;
+}
+
+@keyframes splash-fade {
+  to {
+    opacity: 1;
+  }
+}
+
+/* 底部进度线：宽度由 JS 按真实阶段推进，因此这里只用 transition */
+.splash__progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--c-rule-2);
+}
+
+.splash__progress i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--c-ink);
+  transition: width 620ms var(--e-in-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash,
+  .splash__mark,
+  .splash__rule,
+  .splash__meta {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+  }
+}

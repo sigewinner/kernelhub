@@ -62,7 +62,6 @@ export async function mount(host, ctx) {
   }, h('span', { textContent: '打开目录' }));
 
   const tableHost = h('div');
-  const footEl = h('div.footline');
 
   /**
    * embed：被「插件」页当成一个标签页挂载时，页面自己已经有标题栏了，
@@ -71,9 +70,7 @@ export async function mount(host, ctx) {
   const head = ctx && ctx.embed
     ? null
     : h('div.view-head', null,
-        h('div.view-crumb', { textContent: 'KernelHub Studio' }),
         h('h1.view-title', { textContent: '内核' }),
-        h('div.view-sub', { textContent: '每个内核 = 一份 CKP 清单 + 一个适配器入口；状态与能力全部来自探测结果。' }),
         h('div.view-rule')
       );
 
@@ -86,8 +83,7 @@ export async function mount(host, ctx) {
       h('div.selectwrap', { style: { width: '150px' } }, sortSelect),
       h('div.toolbar__right', null, rescanBtn, openDirBtn)
     ),
-    tableHost,
-    footEl
+    tableHost
   );
   host.appendChild(wrap);
 
@@ -172,11 +168,29 @@ export async function mount(host, ctx) {
 
   /* --------------------------------------------------------------- 渲染 */
 
+  /** 当前筛选后实际显示的行数（render 更新，publishStatus 用） */
+  let listedCount = 0;
+
+  /**
+   * 把实时信息推到状态栏右下角（2.0.4 起不再各视图自己放一行 .footline）。
+   * 单独抽出来是因为它有两个调用点：render() 之后，以及被「插件」页切回本标签时。
+   */
+  function publishStatus() {
+    const total = allKernels().length;
+    const ready = Number(store.pick('kernelsReady') || 0);
+    const searchPaths = store.pick('kernelSearchPaths') || [];
+    ctx.setStatusInfo([
+      `可用 ${ready} / 共 ${total}`,
+      `当前显示 ${listedCount} 个`,
+      searchPaths.length ? `搜索路径 ${searchPaths.length} 处` : null,
+    ]);
+  }
+
   function render() {
     renderFilters();
     const rows = sorted();
     const total = allKernels().length;
-    const ready = Number(store.pick('kernelsReady') || 0);
+    listedCount = rows.length;
 
     clear(tableHost);
 
@@ -259,12 +273,7 @@ export async function mount(host, ctx) {
       ));
     }
 
-    clear(footEl);
-    footEl.appendChild(h('span', { textContent: `可用 ${ready} / 共 ${total}` }));
-    footEl.appendChild(h('span', { textContent: '·' }));
-    footEl.appendChild(h('span', { textContent: `当前显示 ${rows.length} 个` }));
-    const searchPaths = store.pick('kernelSearchPaths') || [];
-    if (searchPaths.length) footEl.appendChild(h('span', { textContent: `· 搜索路径 ${searchPaths.length} 处` }));
+    publishStatus();
   }
 
   /* --------------------------------------------------------------- 详情 */
@@ -565,6 +574,8 @@ export async function mount(host, ctx) {
   render();
 
   return {
+    /** 重新把实时信息推给状态栏：被「插件」页切回本标签时调用，避免显示上一个标签的数字 */
+    publishStatus,
     unmount() {
       sheet.destroy();
       while (disposers.length) {

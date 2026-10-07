@@ -758,8 +758,14 @@
 @media (prefers-reduced-motion: reduce) {
   .segmented__indicator,
   .segmented__btn,
+  .nav__indicator,
+  .nav__item,
+  .nav__num,
+  .nav__hint,
   .progress__fill,
-  .toast {
+  .toast,
+  .splash,
+  .splash__bar i {
     transition-duration: 1ms !important;
     animation: none !important;
   }

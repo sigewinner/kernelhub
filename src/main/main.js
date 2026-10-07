@@ -1129,6 +1129,72 @@ async function runSelfTest() {
       const installedRows = await js(`document.querySelectorAll('#view table tbody tr').length`);
       step('「已安装」标签渲染出内核列表', installedRows >= 4, `${installedRows} 行`);
 
+      /* ---- 2.0.4：开启动画、侧栏指示块、右下角实时信息、页头只剩标题 ---- */
+
+      const splash = await js(`window.__khsTest.splashState()`);
+      step(
+        '开启动画已收起（不挡界面）',
+        Boolean(splash) && (splash.present === false || splash.done === true),
+        splash ? JSON.stringify(splash) : '取不到开启动画'
+      );
+
+      const heads = await js(`({
+        crumbs: document.querySelectorAll('#view .view-crumb').length,
+        subs: document.querySelectorAll('#view .view-sub').length,
+        titles: document.querySelectorAll('#view .view-title').length,
+      })`);
+      step(
+        '页头只剩标题（无面包屑、无小字）',
+        heads && heads.crumbs === 0 && heads.subs === 0 && heads.titles === 1,
+        JSON.stringify(heads)
+      );
+
+      const nav0 = await js(`window.__khsTest.navIndicator()`);
+      step(
+        '侧栏选中指示块停在当前项上',
+        Boolean(nav0) &&
+          nav0.activeLabel &&
+          nav0.inlineTransform === `translateY(${nav0.activeOffsetTop}px)` &&
+          nav0.inlineHeight === `${nav0.activeOffsetHeight}px`,
+        nav0 ? `选中「${nav0.activeLabel}」位置=${nav0.inlineTransform} 高=${nav0.inlineHeight}` : '取不到指示块'
+      );
+      step(
+        '侧栏指示块滑动为缓进缓出',
+        Boolean(nav0) &&
+          /cubic-bezier/.test(nav0.transitionTimingFunction) &&
+          parseFloat(nav0.transitionDuration) >= 0.2,
+        nav0 ? `${nav0.transitionDuration} ${nav0.transitionTimingFunction}` : ''
+      );
+
+      const info0 = (await js(`window.__khsTest.statusInfo()`)) || [];
+      step(
+        '右下角显示本视图的实时信息',
+        info0.length > 0,
+        info0.join('  |  ')
+      );
+
+      // 换一个视图，右下角的信息应当随视图改变
+      await js(`window.__khsTest ? window.__khsTest.goto('#/batch') : null`);
+      await settle(900);
+      const info1 = (await js(`window.__khsTest.statusInfo()`)) || [];
+      const nav1 = await js(`window.__khsTest.navIndicator()`);
+      step(
+        '实时信息随视图切换而更换',
+        info1.length > 0 && JSON.stringify(info1) !== JSON.stringify(info0),
+        info1.join('  |  ')
+      );
+      step(
+        '切换视图后侧栏指示块跟到新项',
+        // innerText 含编号（「02 队列」），所以用 includes 判断
+        Boolean(nav1) &&
+          nav1.activeLabel.includes('队列') &&
+          nav1.inlineTransform === `translateY(${nav1.activeOffsetTop}px)`,
+        nav1 ? `选中「${nav1.activeLabel}」位置=${nav1.inlineTransform}` : '取不到指示块'
+      );
+      // 回到插件页，后续步骤依赖它
+      await js(`window.__khsTest ? window.__khsTest.goto('#/plugins') : null`);
+      await settle(900);
+
       // 老链接 #/kernels 要能落到新页面
       await js(`window.__khsTest ? window.__khsTest.goto('#/kernels') : null`);
       await settle(900);

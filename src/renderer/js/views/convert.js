@@ -170,9 +170,7 @@ export async function mount(host, ctx) {
 
   const wrap = h('div.view-inner', null,
     h('div.view-head', null,
-      h('div.view-crumb', { textContent: 'KernelHub Studio' }),
       h('h1.view-title', { textContent: '转换' }),
-      h('div.view-sub', { textContent: '选目标格式 → 开始。内核参数、输出目录与命令行预览都收在「高级」里。' }),
       h('div.view-rule')
     ),
     toolbar,
@@ -583,28 +581,49 @@ export async function mount(host, ctx) {
     outDirInput.placeholder = vs.sameDir ? '（已选择与源文件同目录）' : '未指定（与源文件同目录）';
   }
 
-  /** 任务摘要里的「输出」与「上次结果」 */
+  /**
+   * 任务摘要里的「输出」，以及页脚提示。
+   *
+   * 2.0.4：「上次结果：成功 N · 失败 N · 用时 N s」从摘要卡片移到了状态栏右下角
+   * （属于实时信息，和队列/内核的数字放一起才对）。摘要卡片只留一行状态提示。
+   */
   function renderSummary() {
     outputValueEl.textContent = vs.sameDir ? '与源文件同目录' : (vs.outDir || '源文件所在目录');
 
     const ids = store.pick('lastRunIds') || [];
     const jobs = store.pick('jobs') || new Map();
     const run = ids.map((id) => jobs.get(id)).filter(Boolean);
+
     clear(lastResultEl);
     if (!run.length) {
       lastResultEl.textContent = filesHintText();
+      // 没有「上次结果」时也要把上一轮残留的数字清掉
+      ctx.setStatusInfo(convertStatusInfo());
       return;
     }
+
     const done = run.filter((j) => j.state === 'done').length;
     const failed = run.filter((j) => j.state === 'failed').length;
     const finished = run.filter((j) => j.state === 'done' || j.state === 'failed' || j.state === 'cancelled');
     const started = Math.min(...finished.map((j) => Number(j.startedAt) || Number(j.addedAt) || Date.now()));
     const ended = Math.max(...finished.map((j) => Number(j.finishedAt) || Date.now()));
-    lastResultEl.appendChild(h('span', { textContent: '上次结果：' }));
-    lastResultEl.appendChild(h('span', { textContent: `成功 ${done} · 失败 ${failed}` }));
-    if (finished.length) {
-      lastResultEl.appendChild(h('span', { textContent: ` · 用时 ${((Math.max(0, ended - started)) / 1000).toFixed(1)} s` }));
-    }
+    const elapsed = finished.length ? ` · 用时 ${((Math.max(0, ended - started)) / 1000).toFixed(1)} s` : '';
+
+    lastResultEl.textContent = filesHintText();
+    ctx.setStatusInfo(convertStatusInfo({
+      text: `上次结果：成功 ${done} · 失败 ${failed}${elapsed}`,
+      tone: failed ? 'err' : 'ok',
+    }));
+  }
+
+  /** 转换页推到右下角的状态信息：上次结果 + 当前文件数与输出位置 */
+  function convertStatusInfo(lastResult) {
+    const pending = store.pick('pending') || [];
+    const items = [];
+    if (lastResult) items.push(lastResult);
+    items.push(`${pending.length} 个待转换文件`);
+    items.push(vs.sameDir ? '输出：与源文件同目录' : `输出：${vs.outDir || '源文件所在目录'}`);
+    return items;
   }
 
   function filesHintText() {
