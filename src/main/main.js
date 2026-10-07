@@ -35,6 +35,7 @@ const catalog = require('../engine/catalog');
 const pluginName = require('../shared/pluginName');
 const { clearProbeCache } = require('../engine/python');
 const deps = require('../engine/deps');
+const update = require('../engine/update');
 const { formatOfPath, basenameOf, extOf, CKP_VERSION } = require('../shared/protocol');
 const { humanSize } = catalog;
 
@@ -583,6 +584,73 @@ function registerIpc() {
   });
 
   handle('plugins:verify', () => pluginStore.verifyAll());
+
+  /* -- 检测更新 / 更新（2.2.0）--------------------------------------------- */
+
+  /** 下载目录：放在用户数据目录下，避免污染安装目录 */
+  const updateDir = () => path.join(resolveStateDir(), 'updates');
+
+  /**
+   * 检测更新：只看**同一个大版本**。
+   * 当前 2.2.0 → 找 GitHub Release 里最大的 2.x.x；3.x.x 不推给用户。
+   */
+  handle('update:check', async () => {
+    const current = app.getVersion();
+    const result = await update.checkForUpdate({ current, repoSlug: 'sigewinner/kernelhub' });
+    return { ...result, currentVersion: current };
+  });
+
+  /**
+   * 下载安装包，并（可选）立刻启动安装向导。
+   * 下载进度经 evt:update:progress 回到界面。
+   */
+  handle('update:download', async ({ url, name, size, launch } = {}) => {
+    const asset = { url, name: name || 'KernelHub-Studio-setup.exe', size: Number(size) || 0 };
+    if (!asset.url) return { ok: false, error: '缺少下载地址' };
+    const send = (payload) => {
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('evt:update:progress', payload);
+      } catch {
+        /* ignore */
+      }
+    };
+    send({ phase: 'start', percent: 0, message: `开始下载 ${asset.name}…` });
+    const result = await update.downloadInstaller({
+      asset,
+      dir: updateDir(),
+      onProgress: (info) => send({ phase: 'download', ...info, message: `已下载 ${info.percent}%` }),
+    });
+    if (!result.ok) {
+      send({ phase: 'error', percent: 0, message: `下载失败：${result.error}` });
+      return result;
+    }
+    send({ phase: 'done', percent: 100, message: '下载完成' });
+    if (launch) {
+      const err = await shell.openPath(result.path);
+      if (err) return { ...result, launchError: String(err) };
+      return { ...result, launched: true };
+    }
+    return result;
+  });
+
+  /** 在浏览器里打开 Release 页面（看更新说明 / 手动下载） */
+  handle('update:openRelease', (url) => {
+    const target = String(url || 'https://github.com/sigewinner/kernelhub/releases');
+    shell.openExternal(target);
+    return { ok: true };
+  });
+
+  /** 打开已下载安装包所在目录 */
+  handle('update:openDir', () => {
+    const dir = updateDir();
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+    } catch {
+      /* ignore */
+    }
+    shell.openPath(dir);
+    return { ok: true };
+  });
 
   /**
    * 插件的 Python 依赖清单。
@@ -1374,7 +1442,75 @@ async function runSelfTest() {
       );
       await js(`window.__khsTest.toastClear()`);
 
-      /* ---- 「可安装」标签：目录要走网络，轮询等它渲染出来（最多 10s） ---- */
+      /* ---- 2.2.0：表格居中、抽屉缓动、设置项缓动、检测更新 ---- */
+
+      // 插件目录表应当居中
+      const tableAlign = await js(`(() => {
+        const th = document.querySelector('#view table.table--center th');
+        const td = document.querySelector('#view table.table--center td');
+        return th ? { th: getComputedStyle(th).textAlign, td: td ? getComputedStyle(td).textAlign : '' } : null;
+      })()`);
+      step(
+        '插件目录表元素居中',
+        Boolean(tableAlign) && tableAlign.th === 'center' && tableAlign.td === 'center',
+        tableAlign ? `th=${tableAlign.th} td=${tableAlign.td}` : '没找到居中表'
+      );
+
+      // 高级抽屉：要有过渡配置（不是瞬现瞬消）
+      await js(`window.__khsTest ? window.__khsTest.goto('#/convert') : null`);
+      await settle(1000);
+      await js(`(() => {
+        const btn = Array.from(document.querySelectorAll('#view .toolbar .btn')).find((b) => b.innerText.trim() === '高级');
+        if (btn) btn.click();
+      })()`);
+      await settle(700);
+      const sheet = await js(`window.__khsTest.sheetState()`);
+      step(
+        '高级抽屉弹出带缓动（有过渡，不是瞬现）',
+        Boolean(sheet) && sheet.open === true && sheet.hasTransition && parseFloat(sheet.transitionDuration) >= 0.2,
+        sheet ? `open=${sheet.open} opacity=${sheet.opacity} 过渡=${sheet.transitionDuration}` : '取不到抽屉状态'
+      );
+      await js(`(() => {
+        const btn = Array.from(document.querySelectorAll('#view .sheet .btn')).find((b) => b.innerText.trim() === '关闭');
+        if (btn) btn.click();
+      })()`);
+      await settle(700);
+      const sheetClosed = await js(`window.__khsTest.sheetState()`);
+      step(
+        '高级抽屉收起后（动画播完）才真正隐藏',
+        Boolean(sheetClosed) && sheetClosed.open === false && sheetClosed.hidden === true,
+        sheetClosed ? `open=${sheetClosed.open} hidden=${sheetClosed.hidden} opacity=${sheetClosed.opacity}` : '取不到抽屉状态'
+      );
+
+      // 设置页：分类指示块 + 检测更新
+      await js(`window.__khsTest ? window.__khsTest.goto('#/settings') : null`);
+      await settle(1200);
+      const snav0 = await js(`window.__khsTest.settingsNavIndicator()`);
+      await js(`window.__khsTest.clickSettingsCategory('关于')`);
+      await settle(700);
+      const snav1 = await js(`window.__khsTest.settingsNavIndicator()`);
+      step(
+        '设置分类指示块随选中项移动',
+        Boolean(snav1) &&
+          snav1.activeLabel === '关于' &&
+          snav1.inlineTransform === `translateY(${snav1.activeOffsetTop}px)` &&
+          (!snav0 || snav0.inlineTransform !== snav1.inlineTransform),
+        snav1 ? `选中「${snav1.activeLabel}」位置=${snav1.inlineTransform} 过渡=${snav1.transitionDuration}` : '取不到指示块'
+      );
+
+      const upd = await js(`window.khs.update.check()`);
+      step(
+        '检测更新可用（按大版本取 GitHub Release）',
+        Boolean(upd && upd.ok && upd.current && upd.latest),
+        upd ? `当前=${upd.current} 同大版本最新=${upd.latest} 有更新=${Boolean(upd.hasUpdate)}${upd.error ? ` 错误=${upd.error}` : ''}` : '取不到检测结果'
+      );
+
+      // 回到插件页并切回「可安装」标签：后面的目录渲染断言依赖它
+      await js(`window.__khsTest ? window.__khsTest.goto('#/plugins') : null`);
+      await settle(1200);
+      await js(`window.__khsTest.clickSegment('可安装')`);
+      await settle(500);
+
       let catalogRows = 0;
       for (let i = 0; i < 25; i++) {
         catalogRows = await js(`document.querySelectorAll('#view table tbody tr').length`);

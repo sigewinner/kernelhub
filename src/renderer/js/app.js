@@ -1243,6 +1243,48 @@ function installTestHooks() {
       );
     },
 
+    /** 设置页分类指示块的状态（自检用） */
+    settingsNavIndicator() {
+      const ind = document.querySelector('.settings-nav__indicator');
+      const active = document.querySelector('.settings-nav__item[aria-current="page"]');
+      if (!ind) return null;
+      return {
+        inlineTransform: ind.style.transform,
+        inlineHeight: ind.style.height,
+        activeLabel: active ? active.innerText.trim() : null,
+        activeOffsetTop: active ? active.offsetTop : null,
+        activeOffsetHeight: active ? active.offsetHeight : null,
+        transitionTimingFunction: getComputedStyle(ind).transitionTimingFunction,
+        transitionDuration: getComputedStyle(ind).transitionDuration,
+      };
+    },
+
+    /** 点击设置页的某个分类 */
+    clickSettingsCategory(label) {
+      const item = Array.from(document.querySelectorAll('.settings-nav__item')).find(
+        (el) => el.innerText.trim() === label
+      );
+      if (!item) return false;
+      item.click();
+      return true;
+    },
+
+    /** 抽屉（高级面板）当前状态：是否打开、计算后的透明度与位移 */
+    sheetState() {
+      const root = document.querySelector('.sheet-host');
+      const panel = document.querySelector('.sheet');
+      if (!root || !panel) return null;
+      const cs = getComputedStyle(panel);
+      return {
+        hidden: Boolean(root.hidden),
+        open: root.dataset.open === 'true',
+        opacity: cs.opacity,
+        transform: cs.transform,
+        hasTransition: /transform/.test(cs.transitionProperty),
+        transitionDuration: cs.transitionDuration,
+      };
+    },
+
     /** 路由跳转并等待视图挂载完成 */
     async goto(hash) {
       const target = String(hash || '#/convert');

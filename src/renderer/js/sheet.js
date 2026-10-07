@@ -49,11 +49,36 @@ export function createSheet(host, opts = {}) {
   const scrim = h('div.sheet-scrim', { on: { click: () => close() } });
   const root = h('div.sheet-host', null, scrim, panel);
   root.hidden = true;
+  root.dataset.open = 'false';
   if (host) host.appendChild(root);
 
+  /** 与 components.css 里 .sheet 的过渡时长对齐 */
+  const ANIM_MS = 300;
+
+  function reducedMotion() {
+    try {
+      return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    } catch {
+      return false;
+    }
+  }
+
+  let hideTimer = null;
+
+  /**
+   * 打开 / 收起。
+   *
+   * 2.2.0：弹出与收起都带缓动（[data-open] 驱动 CSS 过渡，见 components.css）。
+   * 收起时必须等动画播完再 hidden —— 否则元素立刻消失，过渡根本看不到。
+   */
   function setOpen(next) {
-    open = Boolean(next);
-    root.hidden = !open;
+    const want = Boolean(next);
+    if (want === open) {
+      // 状态没变，但首次打开时 root 可能还是 hidden，这里兜底保证可见
+      if (want) root.hidden = false;
+      return;
+    }
+    open = want;
     if (typeof opts.onToggle === 'function') {
       try {
         opts.onToggle(open);
@@ -61,6 +86,35 @@ export function createSheet(host, opts = {}) {
         console.error('[sheet] onToggle 异常', err);
       }
     }
+
+    if (hideTimer) {
+      clearTimeout(hideTimer);
+      hideTimer = null;
+    }
+
+    if (open) {
+      root.hidden = false;
+      // 先确保处于「关闭」的起始状态，下一帧再切到打开，过渡才有起点
+      root.dataset.open = 'false';
+      if (reducedMotion()) {
+        root.dataset.open = 'true';
+        return;
+      }
+      requestAnimationFrame(() => {
+        if (open) root.dataset.open = 'true';
+      });
+      return;
+    }
+
+    root.dataset.open = 'false';
+    if (reducedMotion()) {
+      root.hidden = true;
+      return;
+    }
+    hideTimer = setTimeout(() => {
+      hideTimer = null;
+      if (!open) root.hidden = true;
+    }, ANIM_MS);
   }
 
   function close() {

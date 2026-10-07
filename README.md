@@ -59,6 +59,9 @@ FFmpeg、PyMuPDF、Pillow、Office 文档这些大块头，在「插件」页按
 插件缺 Python 依赖时会弹窗询问，可直接从**镜像或官方源**自动补齐（装进插件自己的
 `vendor/` 目录，卸载时一并删除；pip 源可在设置里改）。
 
+设置 → 关于 里有**检测更新**：到 GitHub Release 上查找**同大版本**里最新的版本
+（2.x 只找 2.x，不会把 3.x 推给你），发现新版本可一键下载安装包并启动安装向导。
+
 | | |
 |---|---|
 | ![高级抽屉](docs/screenshots/06-convert-advanced.png) | ![协议规范](docs/screenshots/08-protocol.png) |
@@ -76,8 +79,8 @@ FFmpeg、PyMuPDF、Pillow、Office 文档这些大块头，在「插件」页按
 
 | 文件 | 大小 | 说明 |
 |---|---|---|
-| `KernelHub Studio-2.1.0-setup.exe` | 89.9 MB | 安装版：可选安装目录，自动建快捷方式 |
-| `KernelHub Studio-2.1.0-portable.exe` | 89.6 MB | 便携版：免安装，首次启动要自解压，稍慢十几秒 |
+| `KernelHub Studio-2.2.0-setup.exe` | 89.9 MB | 安装版：可选安装目录，自动建快捷方式 |
+| `KernelHub Studio-2.2.0-portable.exe` | 89.6 MB | 便携版：免安装，首次启动要自解压，稍慢十几秒 |
 
 ### 2. 系统要求
 

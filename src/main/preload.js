@@ -52,6 +52,7 @@ const EVENT_CHANNELS = [
   'evt:log',
   'evt:window',
   'evt:plugin:progress',
+  'evt:update:progress',
   'cmd',
 ];
 
@@ -163,6 +164,13 @@ const api = {
     clear: () => invoke('logs:clear'),
   },
   doctor: () => invoke('doctor'),
+  /** 检测更新 / 下载安装包（2.2.0） */
+  update: {
+    check: () => invoke('update:check'),
+    download: (payload) => invoke('update:download', payload),
+    openRelease: (url) => invoke('update:openRelease', url),
+    openDir: () => invoke('update:openDir'),
+  },
   protocol: {
     doc: () => invoke('protocol:doc'),
     schemas: () => invoke('protocol:schemas'),

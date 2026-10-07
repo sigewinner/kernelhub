@@ -415,6 +415,32 @@
   text-align: right;
 }
 
+/**
+ * 元素居中的表格（2.2.0）。
+ * 插件页的目录表用它：那一屏每一格都是一个短标记（状态徽标、名字、版本、体积…），
+ * 左对齐会在右侧留出参差不齐的空白，居中之后整张表是一根中轴，读起来更稳。
+ *
+ * 注意选择器写成 .table.table--center（两个类）：
+ * 单写 .table--center th 与上面的 .table th 特异性相同（都是 0,1,1），
+ * 会按源码顺序决定胜负 —— 那样这条规则就失效了。`.num` 同理。
+ */
+.table.table--center th,
+.table.table--center td,
+.table.table--center .num {
+  text-align: center;
+}
+
+.table.table--center th,
+.table.table--center td {
+  padding-left: var(--sp-2);
+  padding-right: var(--sp-2);
+}
+
+/* 居中的表里，行内操作按钮也一起居中 */
+.table.table--center td .rowactions {
+  justify-content: center;
+}
+
 .table tbody tr {
   transition: background var(--t-fast) ease-out;
 }
@@ -850,6 +876,31 @@
   background: var(--c-paper);
   border-left: var(--line);
   overflow: hidden;
+  /**
+   * 2.2.0：弹出 / 收起像卡片一样缓动。
+   * 之前是 root.hidden 直接切换（瞬现瞬消），现在用 [data-open] 驱动过渡：
+   * 抽屉从右侧 20px 处淡入，收起时反向回去，收起动画播完才真正 hidden。
+   */
+  opacity: 0;
+  transform: translateX(20px);
+  transition: opacity var(--t-slow) var(--e-out), transform var(--t-slow) var(--e-out);
+}
+
+.sheet-host[data-open="true"] .sheet {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.sheet-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.08);
+  opacity: 0;
+  transition: opacity var(--t-slow) var(--e-in-out);
+}
+
+.sheet-host[data-open="true"] .sheet-scrim {
+  opacity: 1;
 }
 
 .sheet__head {

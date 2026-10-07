@@ -26,6 +26,7 @@
     'evt:log',
     'evt:window',
     'evt:plugin:progress',
+    'evt:update:progress',
     'cmd',
   ];
   let seq = 0;
@@ -116,6 +117,19 @@
       openDir: () => call('plugins:openDir'),
       reveal: (id) => call('plugins:reveal', id),
       settings: () => call('plugins:settings'),
+      deps: (id) => call('plugins:deps', id),
+      installDeps: (p) => call('plugins:installDeps', p),
+    },
+    /**
+     * 检测更新 / 更新（2.2.0）。
+     * 浏览器宿主要去 GitHub 查版本、下载并启动安装程序，这些都不该由开发宿主代劳，
+     * 这里给一个明确的「不支持」回复，让设置页优雅降级而不是抛异常。
+     */
+    update: {
+      check: () => ({ ok: false, current: 'devhost', error: '浏览器开发宿主不支持检测更新，请在打包版里使用' }),
+      download: () => ({ ok: false, error: '浏览器开发宿主不支持更新' }),
+      openRelease: () => ({ ok: false, error: '浏览器开发宿主不支持打开外部链接' }),
+      openDir: () => ({ ok: false, error: '浏览器开发宿主不支持打开目录' }),
     },
     kernels: {
       list: () => call('kernels:list'),

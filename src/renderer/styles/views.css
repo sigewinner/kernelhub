@@ -449,9 +449,27 @@
   grid-column: span 3;
   display: flex;
   flex-direction: column;
+  position: relative; /* 选中指示块的定位基准 */
+}
+
+/**
+ * 设置分类的选中指示块（2.2.0）。
+ * 与侧栏导航、分段选项卡同源：切换分类时方块滑过去，分类自身只做文字反白。
+ */
+.settings-nav__indicator {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 32px;
+  background: var(--c-ink);
+  transition: transform var(--t-slow) var(--e-in-out), height var(--t-slow) var(--e-in-out);
+  z-index: 0;
 }
 
 .settings-nav__item {
+  position: relative;
+  z-index: 1;
   display: block;
   height: 32px;
   line-height: 32px;
@@ -462,15 +480,17 @@
   text-align: left;
   text-decoration: none;
   cursor: pointer;
-  transition: background var(--t-fast) ease-out, color var(--t-fast) ease-out;
+  transition: color var(--t-slow) var(--e-in-out);
 }
 
 .settings-nav__item:hover {
   background: var(--c-hover);
 }
 
-.settings-nav__item[aria-current="page"] {
-  background: var(--c-ink);
+/* 选中态只改文字颜色：背景交给滑动指示块，避免两套高亮打架 */
+.settings-nav__item[aria-current="page"],
+.settings-nav__item[aria-current="page"]:hover {
+  background: transparent;
   color: var(--c-inverse);
 }
 
@@ -480,6 +500,22 @@
   flex-direction: column;
   gap: var(--sp-5);
   min-width: 0;
+}
+
+/* 切换分类时右侧内容淡入（2.2.0）：直接把新内容拍上去会显得很硬 */
+.settings-pane--enter {
+  animation: settings-pane-in var(--t-base) var(--e-out);
+}
+
+@keyframes settings-pane-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .settings-group {

@@ -250,7 +250,7 @@ export async function mount(host, ctx) {
         ));
       }
 
-      tableHost.appendChild(h('table.table', null,
+      tableHost.appendChild(h('table.table.table--center', null,
         h('colgroup', null,
           h('col', { style: { width: '26%' } }),
           h('col', { style: { width: '12%' } }),

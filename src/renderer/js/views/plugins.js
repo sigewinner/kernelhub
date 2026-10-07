@@ -339,7 +339,7 @@ export async function mount(host, ctx) {
       ));
     }
 
-    tableHost.appendChild(h('table.table', null,
+    tableHost.appendChild(h('table.table.table--center', null,
       h('thead', null, h('tr', null,
         h('th', { textContent: '状态' }),
         h('th', { textContent: '插件' }),

@@ -14,6 +14,14 @@ import { h, clear, on, copyText, iconAction } from '../dom.js';
 import { icon } from '../icons.js';
 import { thousands, platformLabel, prettyJson, orDash } from '../format.js';
 
+/** 字节 → 人类可读（设置页自己用，避免跨视图 import） */
+function humanBytes(bytes) {
+  const n = Number(bytes) || 0;
+  if (n < 1024) return `${n} B`;
+  if (n < 1048576) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1048576).toFixed(2)} MB`;
+}
+
 const CATEGORIES = [
   { id: 'appearance', label: '外观' },
   { id: 'language', label: '语言与区域' },
@@ -34,6 +42,10 @@ export async function mount(host, ctx) {
     info: store.pick('info') || null,
     layout: store.pick('layout') || null,
     refreshing: false,
+    /* 检测更新（2.2.0）：null = 还没点过 */
+    updateState: null,
+    updateProgress: '',
+    updateNote: '',
   };
 
   /* --------------------------------------------------------------- 结构 */
@@ -110,8 +122,16 @@ export async function mount(host, ctx) {
 
   /* --------------------------------------------------------------- 渲染 */
 
+  let navIndicatorEl = null;
+  const navLinks = [];
+
   function renderNav() {
     clear(navEl);
+    navLinks.length = 0;
+    // 选中指示块：与侧栏导航同源，切换分类时滑过去
+    navIndicatorEl = h('div.settings-nav__indicator');
+    navEl.appendChild(navIndicatorEl);
+
     for (const item of CATEGORIES) {
       // 分类导航用 <a>（链接）而不是 <button>：它只负责切换右侧内容，
       // 和侧栏导航同类；规范里「链接不算按钮」，这样设置页的按钮数才落在 0~1。
@@ -134,13 +154,37 @@ export async function mount(host, ctx) {
         },
       });
       if (item.id === vs.cat) link.setAttribute('aria-current', 'page');
+      navLinks.push({ id: item.id, el: link });
       navEl.appendChild(link);
+    }
+    moveNavIndicator(false);
+  }
+
+  /** 把指示块挪到当前分类上；animate=false 用于首次定位与尺寸变化 */
+  function moveNavIndicator(animate = true) {
+    if (!navIndicatorEl) return;
+    const hit = navLinks.find((l) => l.id === vs.cat);
+    if (!hit) return;
+    const transform = `translateY(${hit.el.offsetTop}px)`;
+    const height = `${hit.el.offsetHeight}px`;
+    if (navIndicatorEl.style.transform === transform && navIndicatorEl.style.height === height) return;
+    if (!animate) navIndicatorEl.style.transition = 'none';
+    navIndicatorEl.style.transform = transform;
+    navIndicatorEl.style.height = height;
+    if (!animate) {
+      void navIndicatorEl.offsetHeight;
+      navIndicatorEl.style.transition = '';
     }
   }
 
   function selectCategory(id) {
     vs.cat = id;
-    renderNav();
+    // 只改选中标记 + 挪指示块，不重建导航（重建就没有滑动可言了）
+    for (const item of navLinks) {
+      if (item.id === id) item.el.setAttribute('aria-current', 'page');
+      else item.el.removeAttribute('aria-current');
+    }
+    moveNavIndicator(true);
     renderPane();
   }
 
@@ -156,6 +200,10 @@ export async function mount(host, ctx) {
       case 'appearance':
       default: renderAppearance(settings); break;
     }
+    // 新内容淡入（2.2.0）。先移除再强制重排，保证同名动画能重播。
+    paneEl.classList.remove('settings-pane--enter');
+    void paneEl.offsetWidth;
+    paneEl.classList.add('settings-pane--enter');
   }
 
   /* ------------------------------------------------------------ 外观 */
@@ -412,6 +460,131 @@ export async function mount(host, ctx) {
     }
   }
 
+  /* ------------------------------------------------------- 检测更新（2.2.0） */
+
+  /**
+   * 更新检测只认**同一个大版本**：当前 2.x → 只推 2.x 里最新的那个。
+   * 跨大版本可能有破坏性改动，交回用户自己决定。
+   */
+  function renderUpdateGroup(info) {
+    const state = vs.updateState;
+    const checkBtn = h('button.btn', {
+      type: 'button',
+      title: '到 GitHub Release 上找工作目录大版本里最新的版本',
+      on: { click: () => checkUpdate() },
+    }, h('span', { textContent: state && state.checking ? '检测中…' : '检测更新' }));
+
+    const rows = [
+      h('div.kv__k', { textContent: '当前版本' }),
+      h('div.kv__v.mono', { textContent: orDash(info.version) }),
+    ];
+
+    let status = null;
+    if (!state) {
+      status = h('div.field__hint', { textContent: '点「检测更新」到 GitHub 上查看同大版本是否有新版本。' });
+    } else if (state.checking) {
+      status = h('div.field__hint', { textContent: '正在查询 GitHub Release…' });
+    } else if (!state.ok) {
+      status = h('div.strip.strip--warn', null, h('span', { textContent: `检测失败：${state.error}` }));
+    } else if (!state.hasUpdate) {
+      status = h('div.strip.strip--ok', null,
+        h('span', { textContent: `已是最新（${state.major}.x 里最新为 ${state.latest}）` })
+      );
+    }
+
+    const actions = [checkBtn];
+
+    if (state && state.ok && state.hasUpdate) {
+      rows.push(h('div.kv__k', { textContent: '最新版本' }), h('div.kv__v.mono.accent', { textContent: state.latest }));
+      if (state.asset) {
+        rows.push(
+          h('div.kv__k', { textContent: '安装包' }),
+          h('div.kv__v.mono', { textContent: `${state.asset.name}　${humanBytes(state.asset.size)}` })
+        );
+      }
+      const downBtn = h('button.btn.btn--primary', {
+        type: 'button',
+        title: '下载安装包并启动安装向导',
+        on: { click: () => downloadUpdate() },
+      }, h('span', { textContent: '下载并启动安装' }));
+      actions.push(downBtn);
+
+      if (state.url) {
+        actions.push(h('button.btn', {
+          type: 'button',
+          title: '在浏览器里打开 Release 页面',
+          on: { click: () => window.khs.update.openRelease(state.url) },
+        }, h('span', { textContent: '查看更新说明' })));
+      }
+
+      status = h('div.strip.strip--warn', null,
+        h('span', {
+          textContent: `发现新版本 ${state.latest}（${state.major}.x 系列）。更新会下载安装包并启动安装向导，按向导完成即可；已安装的插件与设置不会丢。`,
+        })
+      );
+    }
+
+    if (vs.updateProgress) {
+      actions.push(h('span.mono.dim', { textContent: vs.updateProgress }));
+    }
+
+    paneEl.appendChild(group('更新',
+      h('div.kv', null, ...rows),
+      status,
+      h('div.row.gap-2', null, ...actions),
+      vs.updateNote ? h('div.field__hint', { textContent: vs.updateNote }) : null
+    ));
+  }
+
+  async function checkUpdate() {
+    // 浏览器开发宿主没有 update 桥：优雅降级，别把整个设置页弄崩
+    if (!window.khs || !window.khs.update || typeof window.khs.update.check !== 'function') {
+      vs.updateState = { ok: false, error: '当前运行方式（浏览器宿主）不支持检测更新' };
+      renderPane();
+      return;
+    }
+    vs.updateState = { checking: true };
+    vs.updateNote = '';
+    renderPane();
+    try {
+      const res = await window.khs.update.check();
+      vs.updateState = res || { ok: false, error: '空响应' };
+    } catch (err) {
+      vs.updateState = { ok: false, error: String(err && err.message ? err.message : err) };
+    }
+    renderPane();
+  }
+
+  async function downloadUpdate() {
+    const state = vs.updateState;
+    if (!state || !state.asset) return;
+    vs.updateProgress = '准备下载…';
+    vs.updateNote = '';
+    renderPane();
+    try {
+      const res = await window.khs.update.download({
+        url: state.asset.url,
+        name: state.asset.name,
+        size: state.asset.size,
+        launch: true,
+      });
+      if (!res || !res.ok) {
+        vs.updateProgress = '';
+        vs.updateNote = `下载失败：${(res && res.error) || '未知错误'}`;
+      } else if (res.launchError) {
+        vs.updateProgress = '';
+        vs.updateNote = `已下载到 ${res.path}，但启动安装程序失败：${res.launchError}`;
+      } else {
+        vs.updateProgress = '';
+        vs.updateNote = `安装包已下载（${humanBytes(res.bytes)}）并已启动安装向导。`;
+      }
+    } catch (err) {
+      vs.updateProgress = '';
+      vs.updateNote = `下载异常：${String(err && err.message ? err.message : err)}`;
+    }
+    renderPane();
+  }
+
   /* ------------------------------------------------------------ 关于 */
 
   function renderAbout(settings) {
@@ -428,6 +601,8 @@ export async function mount(host, ctx) {
         h('div.kv__k', { textContent: '开发模式' }), h('div.kv__v', { textContent: info.dev ? '是' : '否' })
       )
     ));
+
+    renderUpdateGroup(info);
 
     if (vs.doctorError) {
       paneEl.appendChild(group('自检',
@@ -539,8 +714,28 @@ export async function mount(host, ctx) {
     renderPane();
   }));
 
+  // 更新包下载进度（2.2.0）：只在「关于」页且正在下载时更新那一行文字
+  disposers.push(window.khs.on('evt:update:progress', (payload) => {
+    if (!payload) return;
+    if (payload.phase === 'download') {
+      vs.updateProgress = `下载中 ${payload.percent || 0}%（${humanBytes(payload.received)} / ${humanBytes(payload.total)}）`;
+    } else if (payload.phase === 'start') {
+      vs.updateProgress = '开始下载…';
+    } else if (payload.phase === 'done') {
+      vs.updateProgress = '下载完成，正在启动安装向导…';
+    } else if (payload.phase === 'error') {
+      vs.updateProgress = '';
+      vs.updateNote = String(payload.message || '下载失败');
+    } else {
+      return;
+    }
+    if (vs.cat === 'about') renderPane();
+  }));
+
   renderNav();
   renderPane();
+  // 挂载后才量得到导航项位置，这里把指示块摆好（首次不动画）
+  requestAnimationFrame(() => moveNavIndicator(false));
   await loadEnv();
   loadDoctor();
 
