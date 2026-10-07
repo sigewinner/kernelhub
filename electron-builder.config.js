@@ -1,17 +1,26 @@
 /**
- * electron-builder 打包配置。
+ * electron-builder 打包配置（2.0.0：壳 + 按需插件）。
  *
  *   npm run build          → 打 Windows 安装版（NSIS）+ 免安装便携版
  *   npm run build:dir      → 只生成解包目录（不含安装器）
  *   npm run build:portable → 只生成单文件便携版
- *   npm run build:fast     → 不打包内核仓库（体积小，但只认 settings 里指定的 hubRoot）
+ *   npm run build:withhub  → 额外把整个内核仓库打进包（老式一体化分发，体积大）
  *
- * 关键约定：
- *   1. 应用代码（src/）进 asar —— 它是纯 Node/前端代码，不需要被外部程序读。
- *   2. CKP 工作区（kernel-hub）**不能**进 asar：内核适配器是 Python/命令行程序，
- *      需要以真实文件存在，所以用 extraResources 拷到 <安装目录>/resources/hub。
- *      运行时 src/engine/paths.js 会优先在 resources/hub 找内核仓库。
- *   3. 不打包 kernel-hub 的 .cache / output / tests / __pycache__ / *.pyc。
+ * 2.0.0 的关键变化：**默认不再把内核仓库打进包**。
+ *
+ *   1.x 会把 kernel-hub 整个 vendor/（约 194 MB，其中 83 MB 是 ffmpeg）
+ *   塞进安装包，用户为了转一张 PNG 也得先下 140 MB。2.0.0 改成：
+ *     - 壳只带「协议运行时 + 4 个不需要外部程序的种子插件」（共约 1.6 MB）
+ *     - 其余插件由用户在「插件」页按需下载到 %APPDATA%\kernelhub-studio\hub\plugins
+ *
+ *   随包分发的三份资源：
+ *     resources/sdk/          CKP 适配器 SDK（kernelhub 这个 Python 包）——
+ *                             每个 adapter.py 都要 import 它，属于协议而非插件
+ *     resources/protocol/     PROTOCOL.md 与 JSON Schema
+ *     resources/seed-plugins/ 种子插件，首次启动复制进用户工作区
+ *
+ *   应用代码（src/）进 asar；上面三份都**不能**进 asar —— Python 与外部程序
+ *   必须以真实文件存在。
  */
 
 const fs = require('fs');
@@ -22,10 +31,37 @@ const REPO_DIR = path.resolve(APP_DIR, '..');
 const HUB_SRC = process.env.KERNELHUB_SRC || path.join(REPO_DIR, 'kernel-hub');
 const HUB_PRESENT = fs.existsSync(path.join(HUB_SRC, 'plugins'));
 
-/** 决定是否随包分发内核仓库：有就带上，可用 KERNELHUB_BUNDLE=0 关掉 */
-const BUNDLE_HUB = process.env.KERNELHUB_BUNDLE === '0' ? false : HUB_PRESENT;
+/**
+ * 是否把整个内核仓库打进包。
+ * 2.0.0 默认 **不打**；只有显式 KERNELHUB_BUNDLE=1 且仓库存在时才带。
+ * （1.x 的默认是「有就带上」，这里反过来了，因为一体包正是要解决的问题。）
+ */
+const BUNDLE_HUB = process.env.KERNELHUB_BUNDLE === '1' && HUB_PRESENT;
 
 const extraResources = [];
+
+// 1) 适配器 SDK：所有插件共用，跟着壳走
+extraResources.push({
+  from: path.join(APP_DIR, 'sdk'),
+  to: 'sdk',
+  filter: ['**/*', '!**/__pycache__/**', '!**/*.pyc'],
+});
+
+// 2) 协议文档与 Schema
+extraResources.push({
+  from: path.join(APP_DIR, 'protocol'),
+  to: 'protocol',
+  filter: ['**/*'],
+});
+
+// 3) 种子插件：首次启动复制进用户工作区，保证装完就能用
+extraResources.push({
+  from: path.join(APP_DIR, 'seed-plugins'),
+  to: 'seed-plugins',
+  filter: ['**/*', '!**/__pycache__/**', '!**/*.pyc', '!**/vendor/**/__pycache__/**'],
+});
+
+// 4) 可选：整个内核仓库（老式一体化分发）
 if (BUNDLE_HUB) {
   extraResources.push({
     from: HUB_SRC,
@@ -42,14 +78,13 @@ if (BUNDLE_HUB) {
       '!**/venv/**',
     ],
   });
-}
-
-/** extraResources 里的路径在打包后是 resources/hub，这里的提示文案跟着变 */
-if (!BUNDLE_HUB) {
+  // eslint-disable-next-line no-console
+  console.warn(`[electron-builder] 一体化模式：把整个内核仓库（${HUB_SRC}）打进了包。`);
+} else {
   // eslint-disable-next-line no-console
   console.warn(
-    `[electron-builder] 未随包分发内核仓库（${HUB_SRC} 不存在）。\n` +
-      '                   安装后请在「设置 → 路径」里指定 CKP 工作区目录。'
+    '[electron-builder] 2.0.0 壳模式：不打包内核仓库，只带 SDK + 协议 + 4 个种子插件。\n' +
+      '                   其余插件由用户在「插件」页按需下载。'
   );
 }
 

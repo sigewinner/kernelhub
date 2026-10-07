@@ -34,7 +34,7 @@ function isFile(p) {
  * @throws {CkpError} DEPENDENCY_MISSING
  */
 function resolveExecutable(name, spec, ctx = {}) {
-  const { hubRoot = '', sysPath = [] } = ctx;
+  const { hubRoot = '', sysPath = [], pluginDir = '' } = ctx;
   const attempts = [];
 
   if (!spec) {
@@ -93,11 +93,22 @@ function resolveExecutable(name, spec, ctx = {}) {
       }
     } else if (source === 'bundled') {
       for (const pattern of specObj.bundled || []) {
-        const base = path.isAbsolute(pattern) ? pattern : path.join(hubRoot, pattern);
-        const hits = globSync(base);
-        if (hits.length) {
-          const rel = path.relative(hubRoot, hits[0]).replace(/\\/g, '/');
-          return { path: hits[0], source: `项目内 ${rel}`, attempts };
+        /**
+         * bundled 模板是相对路径。2.0.0 起插件自带依赖（per-plugin vendor），
+         * 所以先相对**插件目录**找，再回退到工作区根 —— 这样
+         * `vendor/imageio_ffmpeg/binaries/ffmpeg-*.exe` 在插件内就能命中，
+         * 而插件清单本身不需要为 2.0.0 改写。
+         */
+        const bases = [];
+        if (pluginDir) bases.push(pluginDir);
+        if (hubRoot && path.resolve(hubRoot) !== path.resolve(pluginDir || '.')) bases.push(hubRoot);
+        for (const b of bases) {
+          const target = path.isAbsolute(pattern) ? pattern : path.join(b, pattern);
+          const hits = globSync(target);
+          if (hits.length) {
+            const rel = path.relative(b, hits[0]).replace(/\\/g, '/');
+            return { path: hits[0], source: `插件内 ${rel}`, attempts };
+          }
         }
         attempts.push(`bundled:${pattern}`);
       }

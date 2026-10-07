@@ -144,7 +144,11 @@ function buildPlan(entry, job, ctx) {
       const name = m[1].trim();
       if (executables[name]) continue;
       const spec = (xCli.executables || {})[name];
-      executables[name] = resolveExecutable(name, spec, { hubRoot, sysPath }).path;
+      executables[name] = resolveExecutable(name, spec, {
+        hubRoot,
+        sysPath,
+        pluginDir: entry.directory,
+      }).path;
     }
   }
 

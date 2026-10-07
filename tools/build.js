@@ -6,9 +6,12 @@
  *   node tools/build.js --portable   只生成便携版（不需要额外下载 NSIS 工具链，最省事）
  *   node tools/build.js --dir        只生成解包目录（最快，用来验证打包结果能否启动）
  *   node tools/build.js --mirror     打包工具链走 npmmirror 镜像（国内网络推荐）
- *   node tools/build.js --no-hub     不把 kernel-hub 打进包（体积小，装后需手动指定内核目录）
+ *   node tools/build.js --with-hub   把整个内核仓库也打进包（2.0.0 默认不打，一体包体积大）
  *   node tools/build.js --linux      打 Linux 包（AppImage/deb）
  *   node tools/build.js --mac        打 macOS 包（dmg）
+ *
+ * 2.0.0 起默认是「壳模式」：只带 SDK + 协议资产 + 4 个种子插件（约 1.6 MB），
+ * 其余插件由用户在应用内按需下载，见 src/engine/pluginStore.js。
  *
  * 为什么需要这层：
  *   1. `set FOO=1 && x` 是 cmd 语法，npm script 里写死在 PowerShell/bash 下不通用；
@@ -40,10 +43,14 @@ function preflight() {
   checks.push(['electron 二进制存在', fs.existsSync(electronExe) || fs.existsSync(path.join(ROOT, 'node_modules', 'electron', 'dist'))]);
   checks.push(['electron-builder 已安装', fs.existsSync(path.join(ROOT, 'node_modules', 'electron-builder'))]);
   checks.push(['应用入口存在', fs.existsSync(path.join(ROOT, 'src', 'main', 'main.js'))]);
-  if (has('--no-hub')) {
-    checks.push(['内核仓库（--no-hub：不打包）', true]);
-  } else {
+  // 2.0.0：随包分发的是 SDK / 协议 / 种子插件这三份，内核仓库默认不打
+  checks.push(['适配器 SDK 存在（sdk/kernelhub）', fs.existsSync(path.join(ROOT, 'sdk', 'kernelhub', 'sdk.py'))]);
+  checks.push(['协议文档存在（protocol/schemas）', fs.existsSync(path.join(ROOT, 'protocol', 'schemas'))]);
+  checks.push(['种子插件存在（seed-plugins）', fs.existsSync(path.join(ROOT, 'seed-plugins'))]);
+  if (has('--with-hub')) {
     checks.push([`内核仓库可打包：${HUB_SRC}`, HUB_OK]);
+  } else {
+    checks.push(['内核仓库（壳模式：不打包）', true]);
   }
 
   let failed = 0;
@@ -55,8 +62,8 @@ function preflight() {
     say('');
     say('请先修好上面标 ✗ 的项再打包。常见处理：');
     say('  npm install                       :: 装依赖（electron / electron-builder）');
-    say('  $env:KERNELHUB_SRC="D:\\path\\to\\kernel-hub"   :: 指定内核仓库位置');
-    say('  node tools/build.js --no-hub      :: 确实不打包内核仓库时用这个');
+    say('  $env:KERNELHUB_SRC="D:\\path\\to\\kernel-hub"   :: 指定内核仓库位置（仅 --with-hub 需要）');
+    say('  去掉 --with-hub                    :: 用默认的壳模式打包');
     return false;
   }
   return true;
@@ -72,7 +79,8 @@ function run() {
   if (has('--nsis')) args.push('nsis');
 
   const env = { ...process.env };
-  if (has('--no-hub')) env.KERNELHUB_BUNDLE = '0';
+  // 2.0.0：默认壳模式（不打包内核仓库）；只有显式 --with-hub 才走一体化
+  env.KERNELHUB_BUNDLE = has('--with-hub') ? '1' : '0';
   if (has('--no-sign')) env.CSC_IDENTITY_AUTO_DISCOVERY = 'false';
 
   // electron-builder 构建 nsis 安装器时要从 GitHub 下 NSIS / winCodeSign 工具包，
@@ -93,7 +101,11 @@ function run() {
 
   say('');
   say(`▸ 开始打包：electron-builder ${args.slice(1).join(' ')}`);
-  if (env.KERNELHUB_BUNDLE === '0') say('  （不随包分发内核仓库）');
+  say(
+    env.KERNELHUB_BUNDLE === '1'
+      ? '  （一体化模式：整个内核仓库随包分发，体积大）'
+      : '  （壳模式：只带 SDK + 协议 + 种子插件，其余内核由用户在应用内按需下载）'
+  );
   say('');
 
   const res = spawnSync(process.execPath, [cli, ...args], {
@@ -135,7 +147,22 @@ function report() {
   if (fs.existsSync(unpacked)) {
     say('');
     say(`  免安装解包版：${unpacked}`);
-    say('  这个目录可以直接整体拷贝到别处运行；首次启动会自动使用 resources/hub 里的内核仓库。');
+    say('  这个目录可以直接整体拷贝到别处运行。');
+    const res = path.join(out, 'win-unpacked', 'resources');
+    const parts = [];
+    for (const [name, label] of [
+      ['sdk', '适配器 SDK'],
+      ['protocol', '协议资产'],
+      ['seed-plugins', '种子插件'],
+      ['hub', '一体包内核仓库'],
+    ]) {
+      if (fs.existsSync(path.join(res, name))) parts.push(label);
+    }
+    if (parts.length) say(`  随包资源：${parts.join(' / ')}`);
+    if (!fs.existsSync(path.join(res, 'hub'))) {
+      say('  壳模式：安装后首次启动会建用户工作区，并把种子插件复制过去；');
+      say('            其余插件在「插件」页按需下载。');
+    }
   }
   const nsis = found.find((f) => /setup\.exe$/i.test(f.rel));
   if (nsis) {

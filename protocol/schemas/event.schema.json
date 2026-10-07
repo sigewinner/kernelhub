@@ -1,0 +1,123 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ckp.local/schemas/event.schema.json",
+  "title": "CKP Event",
+  "description": "CKP 1.0 事件流（内核 -> 宿主），stdout 上的 NDJSON，每行一个事件",
+  "type": "object",
+  "required": ["type"],
+  "additionalProperties": true,
+  "properties": {
+    "type": {
+      "type": "string",
+      "description": "未知类型宿主须记为 log 并继续",
+      "enum": ["hello", "log", "progress", "artifact", "result", "error"]
+    },
+    "ckp": { "type": "string" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "hello" } }, "required": ["type"] },
+      "then": {
+        "properties": {
+          "type": { "const": "hello" },
+          "ckp": { "type": "string" },
+          "kernel": { "type": "string" },
+          "version": { "type": "string" },
+          "engine": { "type": "string" },
+          "pid": { "type": "integer" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "log" } }, "required": ["type"] },
+      "then": {
+        "required": ["message"],
+        "properties": {
+          "type": { "const": "log" },
+          "level": { "type": "string", "enum": ["debug", "info", "warn", "error"], "default": "info" },
+          "message": { "type": "string" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "progress" } }, "required": ["type"] },
+      "then": {
+        "properties": {
+          "type": { "const": "progress" },
+          "value": { "type": "number", "minimum": 0, "maximum": 1 },
+          "message": { "type": "string" },
+          "current": { "type": "number" },
+          "total": { "type": "number" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "artifact" } }, "required": ["type"] },
+      "then": {
+        "required": ["path"],
+        "properties": {
+          "type": { "const": "artifact" },
+          "path": { "type": "string" },
+          "format": { "type": "string" },
+          "bytes": { "type": "integer", "minimum": 0 },
+          "primary": { "type": "boolean", "default": false },
+          "meta": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "result" } }, "required": ["type"] },
+      "then": {
+        "required": ["ok", "job_id"],
+        "properties": {
+          "type": { "const": "result" },
+          "ok": { "const": true },
+          "ckp": { "type": "string" },
+          "job_id": { "type": "string" },
+          "kernel": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "id": { "type": "string" },
+              "version": { "type": "string" }
+            }
+          },
+          "outputs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["path"],
+              "additionalProperties": true,
+              "properties": {
+                "path": { "type": "string" },
+                "format": { "type": "string" },
+                "bytes": { "type": "integer", "minimum": 0 },
+                "width": { "type": "integer" },
+                "height": { "type": "integer" },
+                "sha256": { "type": "string" },
+                "meta": { "type": "object", "additionalProperties": true }
+              }
+            }
+          },
+          "metrics": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "error" } }, "required": ["type"] },
+      "then": {
+        "required": ["code", "message"],
+        "properties": {
+          "type": { "const": "error" },
+          "ok": { "const": false },
+          "ckp": { "type": "string" },
+          "job_id": { "type": "string" },
+          "code": { "type": "string" },
+          "message": { "type": "string" },
+          "detail": { "type": "string" },
+          "retryable": { "type": "boolean", "default": false }
+        }
+      }
+    }
+  ]
+}

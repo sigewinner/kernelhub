@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ckp.local/schemas/job.schema.json",
+  "title": "CKP Job",
+  "description": "CKP 1.0 任务描述（宿主 -> 内核）",
+  "type": "object",
+  "required": ["ckp", "job_id", "op", "inputs"],
+  "additionalProperties": true,
+  "properties": {
+    "ckp": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" },
+    "job_id": { "type": "string", "minLength": 1 },
+    "kernel": { "type": "string" },
+    "op": { "type": "string", "minLength": 1 },
+    "inputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "additionalProperties": true,
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "format": { "type": "string" },
+          "role": { "type": "string", "default": "primary" },
+          "bytes": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "additionalProperties": true,
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "format": { "type": "string" }
+        }
+      }
+    },
+    "params": { "type": "object", "additionalProperties": true },
+    "workdir": { "type": "string" },
+    "limits": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "timeout_ms": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "context": { "type": "object", "additionalProperties": true }
+  }
+}

@@ -26,7 +26,7 @@ const {
   CkpError,
   NoKernelError,
 } = require('../shared/protocol');
-const { globSync } = require('./paths');
+const { globSync, resolveSdkDir, pluginVendorDirOf } = require('./paths');
 const { resolveExecutable, describeSpec } = require('./executables');
 const { resolvePython, pythonVersion, pythonHasModule, findOnPath } = require('./python');
 
@@ -134,7 +134,11 @@ function probeEntry(entry, ctx) {
   if (ptype === 'ckp-executable') {
     const spec = ((manifest.xCli || {}).executables || {})[probe.target];
     try {
-      const { path: p, source } = resolveExecutable(probe.target, spec, { hubRoot, sysPath });
+      const { path: p, source } = resolveExecutable(probe.target, spec, {
+        hubRoot,
+        sysPath,
+        pluginDir: entry.directory,
+      });
       return { ...entryStatus(), note: `${path.basename(p)} ← ${source}` };
     } catch (err) {
       const detail = err instanceof CkpError ? err.message + (err.detail ? `（${err.detail}）` : '') : String(err.message || err);
@@ -283,11 +287,19 @@ class Registry {
     this.extraPluginDirs = (opts.extraPluginDirs || []).map((d) => path.resolve(d));
     this.disabled = new Set(opts.disabledKernels || []);
     this.priorityOverrides = { ...(opts.priorityOverrides || {}) };
+    /**
+     * CKP 适配器 SDK 目录（含 kernelhub 包）。壳提供，所有插件共用。
+     * 传空串表示「不提供」，用于老布局下让 hubRoot 自己兜底。
+     */
+    this.sdkDir = opts.sdkDir === undefined ? resolveSdkDir() : opts.sdkDir;
+    /** 额外的 PYTHONPATH 条目（例如用户自建的共享依赖目录） */
+    this.extraPythonPaths = (opts.extraPythonPaths || []).map((p) => path.resolve(p));
     this.entries = new Map();
     this.errors = [];
     this.scannedAt = 0;
     this.searchPaths = [];
     this.probeCache = new Map();
+    this._sysPath = null;
   }
 
   /* -- 配置 ------------------------------------------------------------- */
@@ -314,7 +326,48 @@ class Registry {
   }
 
   get sysPath() {
-    return [this.vendorDir, this.hubRoot].filter((p) => isDir(p));
+    if (this._sysPath) return this._sysPath;
+    const parts = [];
+    if (this.sdkDir && isDir(this.sdkDir)) parts.push(this.sdkDir);
+    if (isDir(this.vendorDir)) parts.push(this.vendorDir);
+    parts.push(...this.extraPythonPaths.filter(isDir));
+    if (isDir(this.hubRoot)) parts.push(this.hubRoot);
+    parts.push(...this.collectPluginVendorDirs());
+
+    const seen = new Set();
+    this._sysPath = parts.filter((p) => {
+      const k = path.resolve(p).toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    return this._sysPath;
+  }
+
+  /**
+   * 所有插件各自的 vendor 目录（2.0.0 起插件自带 Python 依赖）。
+   *
+   * 必须扫所有搜索路径的子目录，而不是只扫 hubRoot —— 用户可能通过
+   * CKP_PLUGIN_PATH / extraPluginDirs 把插件放在别处，那些插件的依赖同样要可见。
+   */
+  collectPluginVendorDirs() {
+    const out = [];
+    const bases = this.searchPaths.length ? this.searchPaths : this.resolveSearchPaths();
+    for (const base of bases) {
+      if (!isDir(base)) continue;
+      let children = [];
+      try {
+        children = fs.readdirSync(base);
+      } catch {
+        continue;
+      }
+      for (const child of children) {
+        if (child.startsWith('.') || child.startsWith('_') || SKIP_DIRS.has(child)) continue;
+        const v = pluginVendorDirOf(path.join(base, child));
+        if (isDir(v)) out.push(v);
+      }
+    }
+    return out;
   }
 
   /** 内核搜索路径（去重保序，语义同 Python 宿主） */
@@ -348,6 +401,8 @@ class Registry {
     this.probeCache.clear();
     this._python = undefined;
     this.searchPaths = this.resolveSearchPaths();
+    // sysPath 依赖 searchPaths（要扫各插件自带的 vendor），搜索路径一变就必须重算
+    this._sysPath = null;
     const seenDirs = new Set();
 
     for (const base of this.searchPaths) {

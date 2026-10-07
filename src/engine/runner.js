@@ -78,7 +78,15 @@ function buildEnv(entry, job, ctx = {}) {
   env.CKP_JOB_ID = String(job.job_id || '');
   env.CKP_PLUGIN_DIR = entry.directory;
   env.CKP_PROJECT_ROOT = hubRoot;
-  env.CKP_VENDOR = path.join(hubRoot, 'vendor');
+  /**
+   * CKP_VENDOR 指向**这个插件自己的**依赖目录（2.0.0 起）。
+   *
+   * 老布局是整个工作区共用一个 <hubRoot>/vendor；2.0.0 把它拆到了
+   * <plugin>/vendor，这样装 A 插件不会把 B 插件的 190 MB 一起拖下来。
+   * 适配器若还按老路径找，这里保留 hubRoot/vendor 作为兼容回退。
+   */
+  const ownVendor = path.join(entry.directory, 'vendor');
+  env.CKP_VENDOR = isDir(ownVendor) ? ownVendor : path.join(hubRoot, 'vendor');
 
   for (const [k, v] of Object.entries(manifest.runtime.env || {})) {
     env[String(k)] = String(v).replace(/\$(\w+)|\$\{(\w+)\}/g, (_m, a, b) => process.env[a || b] || '');

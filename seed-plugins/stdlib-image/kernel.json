@@ -1,0 +1,110 @@
+{
+  "ckp": "1.0",
+  "id": "stdlib-image",
+  "name": "纯标准库图像内核（兜底）",
+  "version": "1.1.0",
+  "kind": "image",
+  "description": "KernelHub 自造的零依赖兜底内核：仅用 Python 标准库（zlib/struct）实现 PNG / BMP / Netpbm / TGA 的读写互转。任何机器上都能跑，不需要安装任何东西。",
+  "homepage": "https://github.com/",
+  "license": "MIT",
+  "priority": 20,
+  "tags": ["image", "fallback", "zero-dependency", "png", "bmp", "ppm", "tga", "stdlib"],
+  "runtime": {
+    "type": "python",
+    "entry": "adapter.py",
+    "python": "auto",
+    "requires": []
+  },
+  "probe": {
+    "type": "none"
+  },
+  "capabilities": [
+    {
+      "id": "image.convert.stdlib",
+      "op": "convert",
+      "label": "基础位图转换（零依赖）",
+      "from": ["png", "bmp", "dib", "ppm", "pgm", "pbm", "pnm", "tga"],
+      "to": ["png", "bmp", "ppm", "pgm", "pbm", "pnm", "tga"]
+    },
+    {
+      "id": "image.transform.stdlib",
+      "op": "transform",
+      "label": "基础变换（零依赖）",
+      "from": ["png", "bmp", "ppm", "pgm", "pbm", "pnm", "tga"],
+      "to": ["png", "bmp", "ppm", "pgm", "pbm", "pnm", "tga"]
+    }
+  ],
+  "params": [
+    {
+      "id": "resize_w",
+      "type": "int",
+      "label": "宽度",
+      "default": 0,
+      "min": 0,
+      "max": 30000,
+      "applies_to": ["transform", "convert"]
+    },
+    {
+      "id": "resize_h",
+      "type": "int",
+      "label": "高度",
+      "default": 0,
+      "min": 0,
+      "max": 30000,
+      "applies_to": ["transform", "convert"]
+    },
+    {
+      "id": "keep_aspect",
+      "type": "bool",
+      "label": "保持宽高比",
+      "default": true,
+      "applies_to": ["transform", "convert"]
+    },
+    {
+      "id": "rotate",
+      "type": "float",
+      "label": "旋转角度（90 的倍数）",
+      "default": 0,
+      "min": -360,
+      "max": 360,
+      "applies_to": ["transform", "convert"]
+    },
+    {
+      "id": "flip",
+      "type": "enum",
+      "label": "翻转",
+      "default": "none",
+      "applies_to": ["transform", "convert"],
+      "enum": [
+        { "value": "none", "label": "不翻转" },
+        { "value": "horizontal", "label": "水平镜像" },
+        { "value": "vertical", "label": "垂直镜像" },
+        { "value": "both", "label": "中心对称" }
+      ]
+    },
+    {
+      "id": "grayscale",
+      "type": "bool",
+      "label": "转为灰度",
+      "default": false,
+      "applies_to": ["transform", "convert"]
+    },
+    {
+      "id": "background",
+      "type": "color",
+      "label": "透明背景填充色",
+      "default": "#FFFFFF",
+      "when": { "to": ["bmp", "ppm", "tga", "pgm", "pbm"] }
+    },
+    {
+      "id": "png_compress_level",
+      "type": "int",
+      "label": "PNG 压缩级别",
+      "default": 6,
+      "min": 0,
+      "max": 9,
+      "advanced": true,
+      "when": { "to": ["png"] }
+    }
+  ]
+}

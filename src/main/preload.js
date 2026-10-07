@@ -51,6 +51,7 @@ const EVENT_CHANNELS = [
   'evt:queue:idle',
   'evt:log',
   'evt:window',
+  'evt:plugin:progress',
   'cmd',
 ];
 
@@ -99,6 +100,18 @@ const api = {
     ops: () => invoke('kernels:ops'),
     formats: () => invoke('kernels:formats'),
     openDir: (id) => invoke('kernels:openDir', id),
+  },
+
+  /* -- 插件商店 ----------------------------------------------------------- */
+  plugins: {
+    list: (opts) => invoke('plugins:list', opts),
+    install: (id, mode) => invoke('plugins:install', { id, mode }),
+    update: (id, mode) => invoke('plugins:update', { id, mode }),
+    uninstall: (id) => invoke('plugins:uninstall', id),
+    verify: () => invoke('plugins:verify'),
+    openDir: () => invoke('plugins:openDir'),
+    reveal: (id) => invoke('plugins:reveal', id),
+    settings: () => invoke('plugins:settings'),
   },
 
   /* -- 计划 --------------------------------------------------------------- */

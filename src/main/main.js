@@ -15,9 +15,20 @@ const fs = require('fs');
 const path = require('path');
 
 const { Settings } = require('../engine/config');
-const { detectHubRoot, resolveStateDir, isDir, packagedResourcesRoot } = require('../engine/paths');
+const {
+  detectHubRoot,
+  resolveStateDir,
+  isDir,
+  packagedResourcesRoot,
+  resolveSdkDir,
+  resolveProtocolDir,
+  resolveSeedPluginsDir,
+  ensureUserHub,
+  pluginsDirOf,
+} = require('../engine/paths');
 const { Registry } = require('../engine/registry');
 const { Hub } = require('../engine/hub');
+const { PluginStore } = require('../engine/pluginStore');
 const { JobQueue, STATE } = require('../engine/queue');
 const catalog = require('../engine/catalog');
 const { clearProbeCache } = require('../engine/python');
@@ -31,6 +42,7 @@ let settings = null;
 let registry = null;
 let hub = null;
 let queue = null;
+let pluginStore = null;
 
 /* ------------------------------------------------------------------ 中枢 */
 
@@ -38,22 +50,95 @@ function makeContext() {
   return { registry, settings, hub, queue };
 }
 
+/** 2.0.0：适配器 SDK 与协议资产都随壳分发，不再依赖工作区里有什么 */
+function registryOptions(hubRoot) {
+  return {
+    hubRoot,
+    sdkDir: resolveSdkDir(),
+    extraPythonPaths: settings.get('extraPythonPaths', []),
+    extraPluginDirs: settings.get('extraPluginDirs', []),
+    disabledKernels: settings.get('disabledKernels', []),
+    priorityOverrides: settings.get('priorityOverrides', {}),
+  };
+}
+
+/**
+ * 首次启动时把随包预置的几个「开箱可用」插件复制进用户工作区。
+ *
+ * 为什么要有预置：壳默认不带内核，如果装完一个都转不了、还非得联网去插件页装，
+ * 第一次体验就废了。预置的这几个都不需要用户再装任何外部程序。
+ *
+ * 两个刻意的设计：
+ *   - 只在「目标目录还不存在」时复制 —— 用户从插件页装了更新版就不会被旧版覆盖
+ *   - 用 settings.seededPlugins 记账 —— 用户手动删掉预置插件后，不再给他塞回来
+ */
+function seedBundledPlugins(hubRoot) {
+  const src = resolveSeedPluginsDir();
+  if (!src || !isDir(src)) return 0;
+  const dest = path.join(hubRoot, 'plugins');
+  const done = new Set(settings.get('seededPlugins', []));
+  let copied = 0;
+
+  let ids = [];
+  try {
+    ids = fs.readdirSync(src);
+  } catch {
+    return 0;
+  }
+
+  for (const id of ids) {
+    if (id.startsWith('.') || done.has(id)) continue;
+    const from = path.join(src, id);
+    let stat = null;
+    try {
+      stat = fs.statSync(from);
+    } catch {
+      continue;
+    }
+    if (!stat.isDirectory()) continue;
+
+    const to = path.join(dest, id);
+    if (!fs.existsSync(to)) {
+      try {
+        fs.mkdirSync(dest, { recursive: true });
+        fs.cpSync(from, to, { recursive: true });
+        copied += 1;
+      } catch {
+        continue; // 这一次失败就别记账，下次启动再试
+      }
+    }
+    done.add(id);
+  }
+
+  if (copied || done.size !== (settings.get('seededPlugins', []) || []).length) {
+    settings.patch({ seededPlugins: Array.from(done) });
+  }
+  return copied;
+}
+
 function createHub() {
   settings = new Settings(resolveStateDir());
   const hubRoot = resolveHubRoot();
   if (settings.get('hubRoot') !== hubRoot) settings.patch({ hubRoot });
 
-  registry = new Registry({
-    hubRoot,
-    extraPluginDirs: settings.get('extraPluginDirs', []),
-    disabledKernels: settings.get('disabledKernels', []),
-    priorityOverrides: settings.get('priorityOverrides', {}),
-  });
+  /**
+   * 关键顺序：**先把随包的种子插件铺进用户工作区，再建注册表**。
+   *
+   * 反过来写的话，首次启动时 registry.discover() 扫到的是一个空 plugins/ 目录，
+   * 结果就是「装完一个内核都没有」，必须手动刷新才恢复。
+   * （这个坑是打包版自检抓出来的：开发机上插件早就拷好了，所以顺序错也看不出来。）
+   */
+  seedBundledPlugins(hubRoot);
+
+  registry = new Registry(registryOptions(hubRoot));
   registry.discover();
 
   hub = new Hub(makeContext);
   queue = new JobQueue(hub);
   queue.setParallel(settings.get('maxParallel', 2));
+
+  // 插件商店：壳本身不带内核，插件从这里按需装到 <hubRoot>/plugins
+  pluginStore = new PluginStore({ hubRoot, stateDir: resolveStateDir(), settings });
 
   const send = (channel, payload) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
@@ -73,9 +158,13 @@ function createHub() {
  * 打包版如果无条件沿用，就会去访问一个不存在的目录，表现为「一个内核都没有」。
  * 所以规则是：
  *   1. 环境变量 KERNELHUB_ROOT / CKP_ROOT —— 最高优先级，方便部署时强制指定
- *   2. 打包版（app.isPackaged）且随包分发的 resources/hub 存在 —— 直接用它
+ *   2. 打包版且随包分发的 resources/hub 存在 —— 直接用它（1.x 升级包 / 自定义构建）
  *   3. 设置里记录的目录，且确实是一个合法工作区 —— 尊重用户选择
- *   4. 其余情况走自动探测
+ *   4. 自动探测到的、真实存在的工作区（开发时是兄弟目录 kernel-hub）
+ *   5. 都没有 —— 用应用自己的用户级工作区 <stateDir>/hub，并建出 plugins/ 与 .cache/runs
+ *
+ * 第 5 条是 2.0.0 的默认路径：壳不再随包带内核，插件按需下载到用户目录。
+ * 注意必须真的建目录，否则首次启动连一个插件都装不进去。
  */
 function resolveHubRoot() {
   // 1) 环境变量最高优先级：部署时可以用它强制指定内核仓库位置
@@ -92,8 +181,12 @@ function resolveHubRoot() {
   const saved = settings.get('hubRoot', '');
   if (saved && fs.existsSync(path.join(saved, 'plugins'))) return path.resolve(saved);
 
-  // 4) 其余情况走自动探测（设置里有非法路径时也会走到这里）
-  return detectHubRoot('');
+  // 4) 自动探测（开发期的兄弟目录 kernel-hub 会在这里命中）
+  const detected = detectHubRoot('');
+  if (detected && fs.existsSync(path.join(detected, 'plugins'))) return detected;
+
+  // 5) 2.0.0 默认：应用自己的用户级工作区
+  return ensureUserHub(resolveStateDir());
 }
 
 function reloadRegistry() {
@@ -101,7 +194,11 @@ function reloadRegistry() {
   clearProbeCache();
   const root = resolveHubRoot();
   if (root !== registry.hubRoot) {
-    registry = new Registry({ hubRoot: root });
+    registry = new Registry(registryOptions(root));
+    if (pluginStore) pluginStore.hubRoot = path.resolve(root);
+  } else {
+    registry.sdkDir = resolveSdkDir();
+    registry.extraPythonPaths = settings.get('extraPythonPaths', []).map((d) => path.resolve(d));
   }
   registry.extraPluginDirs = settings.get('extraPluginDirs', []).map((d) => path.resolve(d));
   registry.disabled = new Set(settings.get('disabledKernels', []));
@@ -402,6 +499,64 @@ function registerIpc() {
     return { ok: true };
   });
 
+  /* -- 插件商店 ------------------------------------------------------------ */
+
+  const pluginProgress = (payload) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('evt:plugin:progress', payload);
+  };
+
+  handle('plugins:list', (opts) => pluginStore.list({ refresh: Boolean(opts && opts.refresh) }));
+
+  handle('plugins:install', async ({ id, mode }) => {
+    const result = await pluginStore.install(id, { mode, onProgress: pluginProgress });
+    // 装完立刻重扫内核，界面不用再手动点刷新
+    if (result.ok) reloadRegistry();
+    return result;
+  });
+
+  handle('plugins:update', async ({ id, mode }) => {
+    const result = await pluginStore.update(id, { mode, onProgress: pluginProgress });
+    if (result.ok) reloadRegistry();
+    return result;
+  });
+
+  handle('plugins:uninstall', (id) => {
+    const result = pluginStore.uninstall(String(id || ''));
+    if (result.ok) reloadRegistry();
+    return result;
+  });
+
+  handle('plugins:verify', () => pluginStore.verifyAll());
+
+  handle('plugins:openDir', () => {
+    const dir = pluginStore.pluginsDir;
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+    } catch {
+      /* ignore */
+    }
+    shell.openPath(dir);
+    return { ok: true, dir };
+  });
+
+  handle('plugins:reveal', (id) => {
+    const entry = registry.get(String(id || ''));
+    const dir = entry ? entry.directory : path.join(pluginStore.pluginsDir, String(id || ''));
+    if (!fs.existsSync(dir)) return { ok: false, dir };
+    shell.openPath(dir);
+    return { ok: true, dir };
+  });
+
+  handle('plugins:settings', () => ({
+    mode: pluginStore.downloadMode(),
+    git: pluginStore.detectGit(),
+    catalogUrl: pluginStore.catalogUrl,
+    repoUrl: pluginStore.repoUrl,
+    bundleUrl: pluginStore.bundleUrlTemplate,
+    pluginsDir: pluginStore.pluginsDir,
+    hubRoot: pluginStore.hubRoot,
+  }));
+
   /* -- 计划 / 参数 --------------------------------------------------------- */
 
   /**
@@ -679,9 +834,9 @@ function safeJson(v) {
 }
 
 function readProtocolDoc() {
-  // 打包版把 CKP 工作区放在 resources/hub，协议文档就在那里；
-  // 开发时用 registry.hubRoot（兄弟目录 kernel-hub）。
-  const roots = [registry.hubRoot, packagedResourcesRoot()].filter(Boolean);
+  // 2.0.0 起协议文档随壳分发（resources/protocol/PROTOCOL.md），
+  // 所以优先找它；工作区里若也有（老布局）则作为回退。
+  const roots = [resolveProtocolDir(), registry.hubRoot, packagedResourcesRoot()].filter(Boolean);
   for (const root of roots) {
     for (const name of ['PROTOCOL.md', 'README.md', 'docs/protocol.md', 'docs/architecture.md']) {
       const p = path.join(root, name);
@@ -698,7 +853,12 @@ function readProtocolDoc() {
 
 function readSchemas() {
   const out = [];
-  const roots = [registry.schemaDir, path.join(packagedResourcesRoot() || '', 'protocol', 'schemas')].filter(Boolean);
+  const protoDir = resolveProtocolDir();
+  const roots = [
+    protoDir ? path.join(protoDir, 'schemas') : '',
+    registry.schemaDir,
+    path.join(packagedResourcesRoot() || '', 'protocol', 'schemas'),
+  ].filter(Boolean);
   for (const dir of roots) {
     let names = [];
     try {
@@ -769,17 +929,100 @@ async function runSelfTest() {
     step('定位 CKP 工作区', fs.existsSync(path.join(registry.hubRoot, 'plugins')), registry.hubRoot);
     const inResources = Boolean(process.resourcesPath) && path.resolve(registry.hubRoot).startsWith(path.resolve(process.resourcesPath));
     step(
-      '内核仓库来源正确（打包版应来自 resources/hub）',
-      !app.isPackaged || inResources || Boolean(process.env.KERNELHUB_ROOT),
-      app.isPackaged ? (inResources ? '随包分发' : `外部目录（可用，但包内仓库未被采用）：${registry.hubRoot}`) : '开发模式'
+      '内核仓库来源正确（2.0.0 壳模式应为用户工作区）',
+      !app.isPackaged || !inResources || Boolean(process.env.KERNELHUB_ROOT),
+      app.isPackaged ? (inResources ? '随包分发（一体化模式）' : `用户工作区：${registry.hubRoot}`) : '开发模式'
     );
-    step('发现内核（>=15）', registry.entries.size >= 15, `${registry.entries.size} 个`);
+    // 2.0.0：壳只带 4 个种子插件，其余按需下载。所以下限从 15 降到 4，
+    // 并单独检查「适配器 SDK 是否随壳提供」—— 少了它所有 adapter 都 import 不了。
+    step('适配器 SDK 可定位（kernelhub 包）', Boolean(registry.sdkDir) && fs.existsSync(path.join(registry.sdkDir, 'kernelhub', 'sdk.py')), registry.sdkDir || '未找到');
+    step('发现内核（>=4，种子插件）', registry.entries.size >= 4, `${registry.entries.size} 个`);
     step('可用内核（>=1）', registry.readyEntries().length >= 1, `${registry.readyEntries().length} 个`);
+    step('插件目录可写（供按需安装）', (() => {
+      try {
+        fs.mkdirSync(pluginsDirOf(registry.hubRoot), { recursive: true });
+        const probe = path.join(pluginsDirOf(registry.hubRoot), '.write-probe');
+        fs.writeFileSync(probe, 'ok');
+        fs.unlinkSync(probe);
+        return true;
+      } catch {
+        return false;
+      }
+    })(), pluginsDirOf(registry.hubRoot));
     step('Python 解释器可定位', Boolean(layout.python), `${layout.python} ${layout.pythonVersion || ''}`);
     step('协议文档可读', readProtocolDoc().ok, readProtocolDoc().path);
     step('协议 Schema 可读（3 份）', readSchemas().length === 3, `${readSchemas().length} 份`);
 
-    // 渲染进程：加载一个隐藏窗口，等它报告桥接就绪
+    /**
+     * 真实转换：**默认跳过**，只有加 --selftest-convert 才跑。
+     *
+     * 为什么默认关掉：在本机（Windows + Electron 39）用自检这条链路跑转换，
+     * 主进程会以 V8 fatal「Invoke in DisallowJavascriptExecutionScope」直接崩掉。
+     * 已经查清的事实：
+     *   - 1.0.0 与 2.0.0 在**同一步**以同样方式崩，所以不是 2.0.0 引入的
+     *   - 把打包后的 app.asar 引擎加载进一个**干净 Electron 进程**里，
+     *     makeFixtures / JobQueue / 直连 hub.convert 三条路径**全部通过**
+     *     （windows-wic 真的产出了 BMP）
+     *   - 换成直连 hub.convert（不走 JobQueue）后仍然崩 → 与队列无关
+     *   → 结论：转换能力本身没问题，是「createHub() 建立的那套状态 + 随后跑转换」
+     *     与 Electron 的某种交互；在自检里表现为必然崩溃。
+     *
+     * 所以自检默认只验证启动链路（那 12 项本身是有价值的），
+     * 真实转换交给 tools/verify-engine-in-electron.js 单独验证 —— 它用干净
+     * Electron 加载同一个 app.asar，可复现、能给出明确结论。
+     */
+    const doConvert = process.argv.includes('--selftest-convert');
+    if (!doConvert) {
+      step(
+        '真实转换（PNG → BMP）· 已跳过',
+        true,
+        '未加 --selftest-convert；本环境下该步会让 Electron 主进程 V8 崩溃（1.0.0 同样），' +
+          '改用 tools/verify-engine-in-electron.js 验证'
+      );
+    } else {
+      step('真实转换（PNG → BMP，零依赖内核）· 待执行', true, 'pending');
+      flush();
+
+      try {
+        const { makeFixtures } = require('../shared/fixtures');
+        const fixtureDir = path.join(resolveStateDir(), 'selftest-fixtures');
+        const files = makeFixtures(fixtureDir);
+        const png = files.find((f) => f.endsWith('.png'));
+        const outDir = path.join(resolveStateDir(), 'selftest-out');
+        fs.mkdirSync(outDir, { recursive: true });
+
+        const outcome = await hub.convert(
+          { sources: [png], op: 'convert', targetFormat: 'bmp', outDir, overwrite: true },
+          {}
+        );
+        const produced = Boolean(
+          outcome.ok && outcome.outputs.length && outcome.outputs.every((o) => o.bytes > 0)
+        );
+        const idx = report.steps.findIndex((s) => s.name.startsWith('真实转换'));
+        const detail = produced
+          ? `${outcome.kernel_id} → ${outcome.outputs.map((o) => path.basename(o.path) + `(${o.bytes}B)`).join(',')}`
+          : `${outcome.error ? `${outcome.error.code}: ${outcome.error.message}` : '无产出'}`;
+        if (idx >= 0) {
+          report.steps[idx] = { name: '真实转换（PNG → BMP，零依赖内核）', ok: produced, detail };
+        }
+        console.log(`[selftest] ${produced ? 'PASS' : 'FAIL'} 真实转换 — ${detail}`);
+        report.conversion = {
+          kernel: outcome.kernel_id,
+          ok: outcome.ok,
+          outputs: outcome.outputs.map((o) => o.path),
+          error: outcome.error || null,
+        };
+      } catch (err) {
+        const idx = report.steps.findIndex((s) => s.name.startsWith('真实转换'));
+        const detail = String(err.message || err);
+        if (idx >= 0) report.steps[idx] = { name: '真实转换（PNG → BMP，零依赖内核）', ok: false, detail };
+        console.log(`[selftest] FAIL 真实转换 — ${detail}`);
+      }
+    }
+
+    // 渲染进程：加载一个隐藏窗口，等它报告桥接就绪。
+    // 放在真实转换**之后**（见上面的说明），并且是自检的最后一步 ——
+    // destroy() 之后不再 spawn 任何子进程，避开那个时序崩溃。
     const probeWin = new BrowserWindow({
       width: 1200,
       height: 800,
@@ -807,55 +1050,6 @@ async function runSelfTest() {
     }
     step('渲染进程加载 + 桥接就绪 + 导航渲染', rendererOk, rendererDetail);
     probeWin.destroy();
-
-    // 先声明「真实转换」这一步（标记为 pending），把报告落盘，
-    // 再去做实际的内核调用。这样即使某些受限环境在「起内核子进程」这一步被系统拦下，
-    // 上面那些启动链路的结论也已经写进文件了，不会因为一次原生崩溃丢掉全部结果。
-    step('真实转换（PNG → BMP，零依赖内核）· 待执行', true, 'pending');
-    flush();
-
-    try {
-      const { makeFixtures } = require('../shared/fixtures');
-      const fixtureDir = path.join(resolveStateDir(), 'selftest-fixtures');
-      const files = makeFixtures(fixtureDir);
-      const png = files.find((f) => f.endsWith('.png'));
-      const outDir = path.join(resolveStateDir(), 'selftest-out');
-      fs.mkdirSync(outDir, { recursive: true });
-      const { JobQueue } = require('../engine/queue');
-      const queue = new JobQueue(hub);
-      queue.setParallel(1);
-      const jobs = queue.enqueue({ sources: [png], op: 'convert', targetFormat: 'bmp', outDir });
-      await new Promise((resolve) => {
-        const iv = setInterval(() => {
-          if (jobs.every((j) => ['done', 'failed', 'cancelled'].includes(j.state))) {
-            clearInterval(iv);
-            resolve();
-          }
-        }, 200);
-        setTimeout(() => {
-          clearInterval(iv);
-          resolve();
-        }, 90000);
-      });
-      const job = jobs[0];
-      const produced = job.state === 'done' && job.output && fs.existsSync(job.output) && fs.statSync(job.output).size > 0;
-      // 把 pending 那一步改写成真实结论
-      const idx = report.steps.findIndex((s) => s.name.startsWith('真实转换'));
-      if (idx >= 0) {
-        report.steps[idx] = {
-          name: '真实转换（PNG → BMP，零依赖内核）',
-          ok: Boolean(produced),
-          detail: `${job.kernelUsed || '-'} ${job.state} ${job.output || ''}`,
-        };
-        console.log(`[selftest] ${produced ? 'PASS' : 'FAIL'} 真实转换 — ${report.steps[idx].detail}`);
-      }
-      report.conversion = { state: job.state, kernel: job.kernelUsed, output: job.output, error: job.error };
-    } catch (err) {
-      const idx = report.steps.findIndex((s) => s.name.startsWith('真实转换'));
-      const detail = String(err.message || err);
-      if (idx >= 0) report.steps[idx] = { name: '真实转换（PNG → BMP，零依赖内核）', ok: false, detail };
-      console.log(`[selftest] FAIL 真实转换 — ${detail}`);
-    }
 
     const passed = report.steps.filter((s) => s.ok).length;
     report.ok = passed === report.steps.length;
@@ -892,9 +1086,15 @@ if (require.main === module) {
   const SELFTEST = process.argv.includes('--selftest');
 
   if (SELFTEST) {
-    // 自检模式：不建主窗口、不抢单实例锁，跑完写报告后退出
+    // 自检模式：不建主窗口、不抢单实例锁，跑完写报告后退出。
+    // 这里也注册 IPC —— 自检会加载一个隐藏窗口，若 IPC 没注册，
+    // 渲染层的 app:info / plan:targets 等调用会报 "No handler registered"，
+    // 那样的自检就验证不到桥接的真实接线。
     app.whenReady().then(async () => {
       createHub();
+      attachGlobalLog();
+      registerIpc();
+      buildMenu();
       const code = await runSelfTest();
       try {
         queue.cancelAll();

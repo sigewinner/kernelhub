@@ -8,6 +8,65 @@
 
 ---
 
+## 2.0.0：壳 + 按需插件
+
+1.x 把整个内核仓库（约 195 MB，其中 83 MB 是 FFmpeg）塞进安装包，
+**为了转一张 PNG，用户也得先下 140 MB**。2.0.0 把这件事拆开了：
+
+| | 1.x | 2.0.0 |
+|---|---|---|
+| 安装包装的是什么 | 壳 + 全部 19 个内核 | **只有壳**（Electron 运行时 + 协议 + 4 个开箱可用的种子插件） |
+| 随包的插件资源 | `resources/hub`，约 195 MB | `resources/seed-plugins`，**约 1.4 MB** |
+| 其余内核 | 已在包里 | **用到再下**，在「插件」页按需安装 |
+| 插件从哪来 | 与宿主同仓库 | 独立仓库 **[sigewinner/kernelhub-plugins](https://github.com/sigewinner/kernelhub-plugins)** |
+
+三份随包分发的资源，都不是「插件」：
+
+| 资源 | 大小 | 为什么必须随包 |
+|---|---|---|
+| `resources/sdk/` | 0.19 MB | **CKP 适配器 SDK**（`kernelhub` 这个 Python 包）。每个 `adapter.py` 开头都是 `from kernelhub.sdk import ...`，它是协议的运行时，不是某个插件的能力 |
+| `resources/protocol/` | 0.04 MB | `PROTOCOL.md` 与 JSON Schema |
+| `resources/seed-plugins/` | 1.40 MB | 4 个**不需要任何外部程序**的插件，首次启动复制进用户工作区，保证装完就能用 |
+
+四个种子插件：`stdlib-image`（纯标准库）、`text-markup`（自带 markdown/html2text）、
+`data-table`（自带 openpyxl）、`windows-wic`（Windows 自带 WIC）。
+
+### 插件怎么装
+
+打开 **插件** 页（侧栏 04，快捷键 `Ctrl/Cmd+4`）：
+
+* 应用拉取插件仓库的 `catalog.json`，列出 19 个插件、体积、能力、需要哪些外部程序
+* 勾选安装 → 下载到 `%APPDATA%\kernelhub-studio\hub\plugins\<id>\`，**装完立刻可用**，不用重启
+* 每个插件自带自己的依赖（`<id>/vendor/`），宿主把该目录注入 `PYTHONPATH`；
+  所以装 A 插件不会把 B 插件的 190 MB 一起拖下来，插件之间也互不干扰
+* 支持卸载、重新安装、内容哈希校验（对不上就拒绝安装并回滚）
+
+下载有两条通路，`settings.pluginDownloadMode` 控制（默认 `auto`）：
+
+1. **git 稀疏克隆**（有 git 时首选）
+   `clone --filter=blob:none --sparse --depth 1` + `sparse-checkout set plugins/<id>`
+   —— 只下载选中的那一个插件目录
+2. **HTTPS 下载 zip**（没有 git，或 git 失败时自动回退）
+   从插件仓库的 Release 资产取 `<id>-<version>.zip`，用内置解压器解开。
+   优先用 `api.github.com` 解析出的资产直链 —— 部分网络下 `github.com` 不可达，
+   但 `api.github.com` 与 `objects.githubusercontent.com` 是通的
+
+装完的文件都做**内容树哈希**校验（与插件仓库 `tools/make-catalog.js` 算法一致），
+不一致视为安装失败并回滚，不会留下半个插件。
+
+> 插件仓库里那 19 个插件的源码，是从 kernel-hub 原样迁移的，**一个字节都没改**；
+> 变的只是「每个插件真正用到的那几个 Python 发行版搬到了它自己的 `vendor/` 下」。
+> 依赖归属由各发行版 `METADATA` 的 `Requires-Dist` 与插件源码的实际引用共同确定。
+
+### 与 Python 版 kernel-hub 的关系
+
+`kernel-hub`（Python/Tkinter 宿主）已**弃用并删除**，它的插件层由
+[kernelhub-plugins](https://github.com/sigewinner/kernelhub-plugins) 仓库承接。
+插件格式（`kernel.json` + `adapter.py` + `--ckp-job`）保持完全一致 ——
+协议没变，只是宿主的运行时从 Tkinter 换成了 Electron。
+
+---
+
 ## 和原项目的关系
 
 | | kernel-hub（原项目） | kernelhub-studio（本项目） |
@@ -124,27 +183,50 @@ npm run browser
 npm run build:dir        :: 只生成解包目录（最快，先验证能不能启动）
 npm run build:portable   :: 便携版单文件 exe
 npm run build:mirror     :: NSIS 安装包 + 便携版（国内网络走镜像，推荐）
+npm run build:withhub    :: 一体化模式：把整个内核仓库也打进包（体积回到 1.x 水平）
 npm run verify:package   :: 验证打出来的包真能启动（会复制到工作区外再跑）
 ```
 
-产物在 `release/`：`KernelHub Studio-1.0.0-setup.exe`（安装版）、`...-portable.exe`（便携版）、
-`win-unpacked/`（免安装目录）。安装包约 140 MB，因为里面同时装了 Electron 运行时（约 200 MB 展开）
-和随包分发的内核仓库（`resources/hub`，约 195 MB，含 Pillow/PyMuPDF/FFmpeg 等内核依赖）。
+产物在 `release/`：`KernelHub Studio-2.0.0-setup.exe`（安装版）、`...-portable.exe`（便携版）、
+`win-unpacked/`（免安装目录）。
+
+**2.0.0 默认是壳模式**：只带 Electron 运行时（约 200 MB 展开）+ SDK + 协议 + 4 个种子插件
+（合计约 1.6 MB），不再把 195 MB 的内核仓库塞进包。所以安装包体积比 1.x 明显小，
+其余内核在应用内的「插件」页按需下载。需要老式一体包时用 `npm run build:withhub`。
 
 > **重要**：打包产物请复制到普通目录（例如 `D:\Apps\`）再运行。本机 DSH 工作区目录
-> 会阻止 GUI 进程启动，从那里双击 exe 一定打不开 —— 这不是程序问题。
-> 完整说明（含配置项、验证方法、常见问题）见 **[docs/build.md](docs/build.md)**。
+> 会阻止 GUI 进程启动（`Low Mandatory Level` + `(NW)`），从那里双击 exe 一定打不开 ——
+> 这不是程序问题。完整说明（含配置项、验证方法、常见问题）见 **[docs/build.md](docs/build.md)**。
 
-### 内核从哪来
+### 打包后怎么验证
 
-宿主默认按下面的顺序寻找 CKP 工作区（kernel-hub 目录），在 **设置** 页里也能手动指定：
+```bat
+:: 1) 自检：启动链路逐项验证（不显示窗口，结果写成 JSON）
+"KernelHub Studio.exe" --selftest --selftest-out=D:\report.json
 
-1. 设置项 `hubRoot`
-2. 环境变量 `KERNELHUB_ROOT` / `CKP_ROOT`
-3. 本项目的兄弟目录 `../kernel-hub`
-4. `~/kernel-hub`、`D:\AAA_develop\01_program_pdf\kernel-hub`
+:: 2) 真实转换：用干净 Electron 加载打包后的 app.asar 引擎跑一次转换
+node tools\verify-engine-in-electron.js --app <解包目录>
+```
 
-内核搜索路径（顺序即优先级）：`<hub>/plugins` → 环境变量 `CKP_PLUGIN_PATH` → 设置里的额外目录 → `~/.kernelhub/plugins`。
+> 自检**默认不跑转换**，只验证启动链路。原因：在本机环境下「自检 + 转换」这条组合会让
+> Electron 主进程以 V8 fatal `Invoke in DisallowJavascriptExecutionScope` 崩溃
+> （1.0.0 与 2.0.0 完全一样，不是 2.0.0 引入的）。转换改用上面第 2 条命令验证 ——
+> 它用**干净的** Electron 加载同一个 `app.asar`，可复现、结论明确。
+> 加 `--selftest-convert` 可以强制在自检里跑转换（预期会崩，仅供排查）。
+
+### 内核从哪来（2.0.0）
+
+宿主按下面的顺序寻找 CKP 工作区：
+
+1. 环境变量 `KERNELHUB_ROOT` / `CKP_ROOT`
+2. 打包版若确实带了 `resources/hub`（一体化构建）—— 优先用它
+3. 设置项 `hubRoot`（且目录合法）
+4. 自动探测到的现成工作区（开发期的兄弟目录 `kernel-hub`）
+5. **都没有就用应用自己的用户级工作区 `<stateDir>/hub`，并把随包的种子插件铺进去**
+
+第 5 条是 2.0.0 的默认路径。插件搜索路径（顺序即优先级）：
+`<hub>/plugins` → 环境变量 `CKP_PLUGIN_PATH` → 设置里的额外目录 → `~/.kernelhub/plugins`；
+每个插件的 `<插件目录>/vendor` 会一并注入内核子进程的 `PYTHONPATH`。
 
 ---
 

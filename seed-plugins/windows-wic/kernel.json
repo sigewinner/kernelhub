@@ -1,0 +1,111 @@
+{
+  "ckp": "1.0",
+  "id": "windows-wic",
+  "name": "Windows GDI+/WIC 图像内核（零依赖）",
+  "version": "1.0.0",
+  "kind": "image",
+  "description": "KernelHub 自造的 Windows 原生兜底内核：直接用系统自带的 System.Drawing（GDI+/WIC）完成 PNG / JPEG / BMP / GIF / TIFF / ICO 互转与缩放旋转。不需要安装任何第三方组件，也不需要 Python 图像库。",
+  "homepage": "https://learn.microsoft.com/dotnet/api/system.drawing",
+  "license": "MIT",
+  "priority": 30,
+  "tags": ["image", "windows", "gdi+", "wic", "fallback", "zero-dependency", "powershell"],
+  "runtime": {
+    "type": "powershell",
+    "entry": "adapter.ps1",
+    "requires": []
+  },
+  "probe": {
+    "type": "command",
+    "target": "powershell",
+    "args": ["-NoProfile", "-NonInteractive", "-Command", "[Console]::WriteLine('KernelHub-OK')"],
+    "expect": "KernelHub-OK"
+  },
+  "capabilities": [
+    {
+      "id": "image.convert.wic",
+      "op": "convert",
+      "label": "Windows 原生图像转换",
+      "from": ["png", "jpg", "jpeg", "jfif", "bmp", "dib", "gif", "tif", "tiff", "ico", "emf", "wmf", "exif"],
+      "to": ["png", "jpg", "jpeg", "bmp", "gif", "tif", "tiff", "ico", "emf", "wmf"]
+    },
+    {
+      "id": "image.transform.wic",
+      "op": "transform",
+      "label": "Windows 原生图像变换",
+      "from": ["png", "jpg", "jpeg", "bmp", "gif", "tif", "tiff", "ico"],
+      "to": ["png", "jpg", "jpeg", "bmp", "gif", "tif", "tiff", "ico"]
+    }
+  ],
+  "params": [
+    {
+      "id": "quality",
+      "type": "int",
+      "label": "JPEG 质量",
+      "default": 88,
+      "min": 1,
+      "max": 100,
+      "when": { "to": ["jpg", "jpeg"] }
+    },
+    {
+      "id": "background",
+      "type": "color",
+      "label": "透明背景填充色",
+      "default": "#FFFFFF",
+      "when": { "to": ["jpg", "jpeg", "bmp"] }
+    },
+    {
+      "id": "resize_w",
+      "type": "int",
+      "label": "宽度",
+      "default": 0,
+      "min": 0,
+      "max": 30000,
+      "applies_to": ["transform", "convert"]
+    },
+    {
+      "id": "resize_h",
+      "type": "int",
+      "label": "高度",
+      "default": 0,
+      "min": 0,
+      "max": 30000,
+      "applies_to": ["transform", "convert"]
+    },
+    {
+      "id": "keep_aspect",
+      "type": "bool",
+      "label": "保持宽高比",
+      "default": true,
+      "applies_to": ["transform", "convert"]
+    },
+    {
+      "id": "rotate",
+      "type": "float",
+      "label": "旋转角度",
+      "default": 0,
+      "min": -360,
+      "max": 360,
+      "applies_to": ["transform", "convert"]
+    },
+    {
+      "id": "flip",
+      "type": "enum",
+      "label": "翻转",
+      "default": "none",
+      "applies_to": ["transform", "convert"],
+      "enum": [
+        { "value": "none", "label": "不翻转" },
+        { "value": "horizontal", "label": "水平镜像" },
+        { "value": "vertical", "label": "垂直镜像" },
+        { "value": "both", "label": "中心对称" }
+      ]
+    },
+    {
+      "id": "grayscale",
+      "type": "bool",
+      "label": "转为灰度",
+      "default": false,
+      "applies_to": ["transform", "convert"]
+    }
+  ]
+}

@@ -25,6 +25,7 @@
     'evt:queue:idle',
     'evt:log',
     'evt:window',
+    'evt:plugin:progress',
     'cmd',
   ];
   let seq = 0;
@@ -106,6 +107,16 @@
     devhost: true,
     app: { info: () => call('app:info'), layout: () => call('app:layout') },
     settings: { get: () => call('settings:get'), set: (p) => call('settings:set', p) },
+    plugins: {
+      list: (o) => call('plugins:list', o),
+      install: (id, mode) => call('plugins:install', { id, mode }),
+      update: (id, mode) => call('plugins:update', { id, mode }),
+      uninstall: (id) => call('plugins:uninstall', id),
+      verify: () => call('plugins:verify'),
+      openDir: () => call('plugins:openDir'),
+      reveal: (id) => call('plugins:reveal', id),
+      settings: () => call('plugins:settings'),
+    },
     kernels: {
       list: () => call('kernels:list'),
       refresh: () => call('kernels:refresh'),

@@ -58,6 +58,95 @@ function packagedResourcesRoot() {
 }
 
 /**
+ * 随应用分发的 CKP 适配器 SDK 所在目录（含 `kernelhub/` 这个 Python 包）。
+ *
+ * 为什么 SDK 跟着壳走、而不是塞进每个插件：
+ *   每个 adapter.py 开头都是 `from kernelhub.sdk import ...` 或
+ *   `from kernelhub.cli_bridge import CliBridge`，也就是说 kernelhub 是**协议的
+ *   运行时**，不是某个插件的能力。它只有 ~190 KB，让每个插件各带一份既浪费
+ *   又会出现版本漂移，所以由宿主统一提供，并注入 PYTHONPATH。
+ *
+ * 查找顺序：打包后的 resources/sdk → 开发态的 <app>/sdk → 1.x 布局的兄弟 kernel-hub
+ */
+function resolveSdkDir() {
+  const candidates = [];
+  if (process.resourcesPath) candidates.push(path.join(process.resourcesPath, 'sdk'));
+  candidates.push(path.join(APP_DIR, 'sdk'));
+  candidates.push(path.join(REPO_DIR, 'kernel-hub'));
+  for (const c of candidates) {
+    if (isDir(path.join(c, 'kernelhub'))) return c;
+  }
+  return '';
+}
+
+/**
+ * 随应用分发的协议文档目录（PROTOCOL.md 与 schemas/）。
+ * 2.0.0 起壳自带协议资产，不再依赖工作区里有没有 kernel-hub。
+ */
+function resolveProtocolDir() {
+  const candidates = [];
+  if (process.resourcesPath) candidates.push(path.join(process.resourcesPath, 'protocol'));
+  candidates.push(path.join(APP_DIR, 'protocol'));
+  candidates.push(path.join(REPO_DIR, 'kernel-hub', 'protocol'));
+  for (const c of candidates) {
+    if (isDir(path.join(c, 'schemas'))) return c;
+  }
+  return '';
+}
+
+/**
+ * 2.0.0 的默认工作区：应用自己的用户级目录。
+ *
+ * 壳不再随包分发内核，插件按需下载到这里：
+ *   <hubRoot>/plugins/<id>/     已安装插件（每个插件自带 vendor/）
+ *   <hubRoot>/.cache/runs/      任务落盘
+ *
+ * 目录不存在就建出来 —— 首次启动必须能落地，否则一个插件都装不了。
+ */
+function ensureUserHub(stateDir) {
+  const hubRoot = path.join(stateDir || resolveStateDir(), 'hub');
+  for (const sub of ['plugins', path.join('.cache', 'runs')]) {
+    try {
+      fs.mkdirSync(path.join(hubRoot, sub), { recursive: true });
+    } catch {
+      /* 只读环境：让上层报错，这里不吞掉语义 */
+    }
+  }
+  return hubRoot;
+}
+
+/** 工作区里的插件目录 */
+function pluginsDirOf(hubRoot) {
+  return path.join(hubRoot, 'plugins');
+}
+
+/**
+ * 随壳预置的插件目录（2.0.0）。
+ *
+ * 壳默认不带内核，但装完就空着一个也转不了、还要联网去装，体验太差。
+ * 所以随包预置几个**不需要任何外部程序**的小插件，首次启动时复制进用户工作区：
+ *   stdlib-image  纯 Python 标准库
+ *   text-markup   Markdown ⇄ HTML ⇄ 文本（自带 markdown / html2text）
+ *   data-table    CSV / JSON / XLSX / Markdown 表格互转（自带 openpyxl）
+ *   windows-wic   Windows 自带 WIC（仅 Windows 可用）
+ * 这四个以外的插件（尤其带几十 MB vendor 的）一律按需下载，不进安装包。
+ */
+function resolveSeedPluginsDir() {
+  const candidates = [];
+  if (process.resourcesPath) candidates.push(path.join(process.resourcesPath, 'seed-plugins'));
+  candidates.push(path.join(APP_DIR, 'seed-plugins'));
+  for (const c of candidates) {
+    if (isDir(c)) return c;
+  }
+  return '';
+}
+
+/** 这个插件自己的 Python 依赖目录（per-plugin vendor，2.0.0 起） */
+function pluginVendorDirOf(pluginDir) {
+  return path.join(pluginDir, 'vendor');
+}
+
+/**
  * 自动探测 CKP 工作区。
  *
  * 打包版和开发版的顺序不同，因为「随包分发的内核仓库」应该是打包版的第一选择：
@@ -146,6 +235,12 @@ module.exports = {
   isDir,
   isFile,
   looksLikeHub,
+  resolveSdkDir,
+  resolveProtocolDir,
+  resolveSeedPluginsDir,
+  ensureUserHub,
+  pluginsDirOf,
+  pluginVendorDirOf,
   detectHubRoot,
   packagedResourcesRoot,
   resolveStateDir,

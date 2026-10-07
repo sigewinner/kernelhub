@@ -34,6 +34,7 @@ const VIEWS = {
   convert: () => import('./views/convert.js'),
   batch: () => import('./views/batch.js'),
   kernels: () => import('./views/kernels.js'),
+  plugins: () => import('./views/plugins.js'),
   formats: () => import('./views/formats.js'),
   protocol: () => import('./views/protocol.js'),
   settings: () => import('./views/settings.js'),
@@ -746,8 +747,8 @@ function bindHotkeys() {
     if (event.defaultPrevented) return;
     const sig = keySignature(event);
 
-    // Ctrl/Cmd+1..7：直接切换视图
-    if (/^mod\+[1-7]$/.test(sig)) {
+    // Ctrl/Cmd+1..8：直接切换视图（索引即 NAV_ITEMS 的顺序）
+    if (/^mod\+[1-9]$/.test(sig)) {
       const index = Number(sig.slice(-1)) - 1;
       const item = NAV_ITEMS[index];
       if (item) {

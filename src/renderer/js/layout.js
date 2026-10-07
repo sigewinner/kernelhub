@@ -20,17 +20,18 @@ import { toast } from './toast.js';
 /* --------------------------------------------------------------- 导航定义 */
 
 /**
- * 侧栏导航项（前 6 项是工作视图，编号 01–06；设置不编号）。
- * 这是 Ctrl/Cmd+1..7 的索引来源，顺序即编号顺序。
+ * 侧栏导航项（前 7 项是工作视图，编号 01–07；设置不编号）。
+ * 这是 Ctrl/Cmd+1..8 的索引来源，顺序即编号顺序。
  */
 export const NAV_ITEMS = [
   { id: 'convert', label: '转换', num: '01', hash: '#/convert', shortcut: 'mod+1', icon: 'convert' },
   { id: 'batch', label: '队列', num: '02', hash: '#/batch', shortcut: 'mod+2', icon: 'queue' },
   { id: 'kernels', label: '内核', num: '03', hash: '#/kernels', shortcut: 'mod+3', icon: 'kernels' },
-  { id: 'formats', label: '格式', num: '04', hash: '#/formats', shortcut: 'mod+4', icon: 'matrix' },
-  { id: 'protocol', label: '协议', num: '05', hash: '#/protocol', shortcut: 'mod+5', icon: 'book' },
-  { id: 'logs', label: '日志', num: '06', hash: '#/logs', shortcut: 'mod+6', icon: 'logs' },
-  { id: 'settings', label: '设置', num: '', hash: '#/settings', shortcut: 'mod+7', icon: 'settings' },
+  { id: 'plugins', label: '插件', num: '04', hash: '#/plugins', shortcut: 'mod+4', icon: 'plugins' },
+  { id: 'formats', label: '格式', num: '05', hash: '#/formats', shortcut: 'mod+5', icon: 'matrix' },
+  { id: 'protocol', label: '协议', num: '06', hash: '#/protocol', shortcut: 'mod+6', icon: 'book' },
+  { id: 'logs', label: '日志', num: '07', hash: '#/logs', shortcut: 'mod+7', icon: 'logs' },
+  { id: 'settings', label: '设置', num: '', hash: '#/settings', shortcut: 'mod+8', icon: 'settings' },
 ];
 
 /** 视图 id → 中文标题（面包屑与命令面板共用） */

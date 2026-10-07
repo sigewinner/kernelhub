@@ -1,0 +1,49 @@
+{
+  "ckp": "1.0",
+  "id": "text-markup",
+  "name": "文本 / 标记语言内核",
+  "version": "1.0.0",
+  "kind": "data",
+  "description": "Markdown ⇄ HTML ⇄ 纯文本 互转：Markdown 渲染成带样式的 HTML（支持表格、代码块、目录），HTML 反向抽取为 Markdown 或纯文本，纯文本升格为 Markdown 或 HTML。完全离线，无外部程序依赖。",
+  "homepage": "https://github.com/Python-Markdown/markdown",
+  "license": "BSD-3-Clause",
+  "priority": 55,
+  "tags": ["text", "markdown", "html", "txt", "document", "python"],
+  "runtime": {
+    "type": "python",
+    "entry": "adapter.py",
+    "requires": []
+  },
+  "probe": { "type": "none" },
+  "capabilities": [
+    {
+      "id": "text.convert",
+      "op": "convert",
+      "label": "文本 / 标记互转",
+      "from": ["md", "markdown", "mdown", "mkd", "html", "htm", "xhtml", "text", "txt", "log"],
+      "to": ["html", "htm", "md", "markdown", "text", "txt", "json"]
+    }
+  ],
+  "params": [
+    { "id": "title", "type": "string", "label": "HTML 标题", "default": "",
+      "when": { "to": ["html", "htm"] } },
+    { "id": "extensions", "type": "string", "label": "Markdown 扩展",
+      "description": "逗号分隔，留空用默认：tables,fenced_code,toc,sane_lists",
+      "default": "", "advanced": true, "when": { "to": ["html", "htm"] } },
+    { "id": "wrap_width", "type": "int", "label": "文本折行宽度",
+      "description": "0 = 不折行", "default": 0, "min": 0, "max": 500,
+      "when": { "to": ["text", "txt", "md", "markdown"] } },
+    { "id": "ignore_links", "type": "bool", "label": "忽略链接", "default": false,
+      "advanced": true, "when": { "to": ["text", "txt"] } },
+    { "id": "ignore_images", "type": "bool", "label": "忽略图片", "default": true,
+      "advanced": true, "when": { "to": ["text", "txt", "md", "markdown"] } }
+  ],
+  "hooks": {
+    "install": {
+      "type": "command", "command": "python",
+      "args": ["tools/pip_bootstrap.py", "install", "--target", "vendor", "-i",
+               "https://pypi.tuna.tsinghua.edu.cn/simple", "markdown", "html2text"],
+      "description": "安装 markdown 与 html2text"
+    }
+  }
+}
