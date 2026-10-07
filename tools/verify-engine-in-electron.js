@@ -200,9 +200,30 @@ const sdkDir = path.join(APP_DIR, 'resources', 'sdk');
 const resultPath = path.join(testDir, 'result.json');
 fs.rmSync(resultPath, { force: true });
 
+/**
+ * 工作区可能还不存在（应用没跑过，或刚被清空）。
+ * 那就用打包自带的种子插件把它初始化出来 —— 这正是应用首次启动做的事
+ * （src/main/main.js 的 seedBundledPlugins），这样本工具不依赖「先手动跑一次应用」。
+ */
+const seedDir = path.join(APP_DIR, 'resources', 'seed-plugins');
+const pluginsDir = path.join(hubRoot, 'plugins');
+let seeded = 0;
+if (fs.existsSync(seedDir)) {
+  fs.mkdirSync(pluginsDir, { recursive: true });
+  for (const id of fs.readdirSync(seedDir)) {
+    const src = path.join(seedDir, id);
+    if (!fs.statSync(src).isDirectory()) continue;
+    const dst = path.join(pluginsDir, id);
+    if (fs.existsSync(dst)) continue;
+    fs.cpSync(src, dst, { recursive: true });
+    seeded += 1;
+  }
+}
+
 console.log('▸ 在干净 Electron 里加载 app.asar 引擎并跑真实转换');
 console.log(`  hubRoot = ${hubRoot}`);
 console.log(`  sdkDir  = ${sdkDir}`);
+if (seeded) console.log(`  （工作区为空，已用打包自带的种子插件初始化：${seeded} 个）`);
 console.log('');
 
 const res = spawnSync(path.join(runtimeDir, 'electron.exe'), [testDir], {

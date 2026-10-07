@@ -153,4 +153,53 @@ function listZip(zipPath) {
   }));
 }
 
-module.exports = { extractZip, listZip, readCentralDirectory, safeRelativeName };
+/** 让出事件循环，避免长时间占住主线程 */
+const yieldLoop = () => new Promise((resolve) => setImmediate(resolve));
+
+/**
+ * 异步解压（推荐在 Electron 主进程里用这个）。
+ *
+ * 与 extractZip 的区别：文件写入用 await，并且每处理若干条就主动让出事件循环。
+ * 插件包动辄几百上千个文件（office-text 808 个），同步版本会把界面卡住；
+ * 这里让出后主进程能继续处理 IPC，进度条也才动得起来。
+ *
+ * @param {string} zipPath
+ * @param {string} destDir
+ * @param {(info:{done:number,total:number,name:string})=>void} [onProgress]
+ */
+async function extractZipAsync(zipPath, destDir, onProgress) {
+  const fsp = fs.promises;
+  const buf = await fsp.readFile(zipPath);
+  const entries = readCentralDirectory(buf);
+  const skipped = [];
+  let files = 0;
+  let bytes = 0;
+
+  for (let idx = 0; idx < entries.length; idx += 1) {
+    const entry = entries[idx];
+    const rel = safeRelativeName(entry.name);
+    if (!rel) {
+      if (entry.name && !entry.isDir) skipped.push(entry.name);
+      continue;
+    }
+    const target = path.join(destDir, rel);
+    if (entry.isDir) {
+      await fsp.mkdir(target, { recursive: true });
+    } else {
+      await fsp.mkdir(path.dirname(target), { recursive: true });
+      const data = readEntry(buf, entry);
+      await fsp.writeFile(target, data);
+      files += 1;
+      bytes += data.length;
+    }
+    // 每 20 条让出一次事件循环；进度也在这个节奏上报
+    if (onProgress && (idx % 20 === 0 || idx === entries.length - 1)) {
+      onProgress({ done: idx + 1, total: entries.length, name: rel, files, bytes });
+    }
+    if (idx % 20 === 0) await yieldLoop();
+  }
+
+  return { files, bytes, skipped };
+}
+
+module.exports = { extractZip, extractZipAsync, listZip, readCentralDirectory, safeRelativeName, yieldLoop };

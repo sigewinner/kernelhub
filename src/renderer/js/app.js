@@ -239,27 +239,57 @@ async function loadKernels({ silent = false } = {}) {
   }
 }
 
-/** 手动刷新内核（重新扫描 + 重新探测），带 loading 反馈 */
-let refreshing = false;
-async function refreshKernels({ announce = true } = {}) {
-  if (refreshing) return false;
-  refreshing = true;
-  const tip = announce ? toast.info('正在重新扫描内核…', { text: '会重新探测每个内核的运行时依赖', ttl: 0 }) : null;
+/**
+ * 刷新格式缓存（命令面板的「格式直达」数据源）。
+ *
+ * 装了插件之后可用格式会变，这个缓存必须跟着更新 —— 否则命令面板里
+ * 搜不到新插件提供的格式，「格式」页也要等下次进入才刷新。
+ */
+async function loadFormatsCache() {
   try {
-    const res = await bridge.kernels.refresh();
-    state.set({
-      kernels: (res && res.kernels) || [],
-      kernelsSummary: (res && res.summary) || null,
-    });
-    await loadKernels({ silent: true });
-    if (announce) toast.success('内核已刷新', { text: `可用 ${state.pick('kernelsReady')} / 共 ${state.pick('kernelsTotal')}` });
-    return true;
-  } catch (err) {
-    reportError('刷新内核失败', wrapError(err));
-    return false;
+    const list = await bridge.kernels.formats();
+    if (Array.isArray(list) && list.length) state.set({ formatsCache: list });
+  } catch {
+    /* 拿不到最新格式不影响主流程，命令面板退化为用旧缓存 */
+  }
+}
+
+/**
+ * 手动刷新内核（重新扫描 + 重新探测），带 loading 反馈。
+ *
+ * 用「共享在途 promise」而不是 refreshing 布尔量：之前那种写法在刷新进行中
+ * 再调一次会直接返回 false，调用方（比如刚装完插件的页面）会以为刷新失败了。
+ * 现在并发调用会一起等同一个刷新完成。
+ */
+let refreshPromise = null;
+async function refreshKernels({ announce = true } = {}) {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    const tip = announce ? toast.info('正在重新扫描内核…', { text: '会重新探测每个内核的运行时依赖', ttl: 0 }) : null;
+    try {
+      const res = await bridge.kernels.refresh();
+      state.set({
+        kernels: (res && res.kernels) || [],
+        kernelsSummary: (res && res.summary) || null,
+      });
+      await loadKernels({ silent: true });
+      // 内核集合变了 → 可用格式也随之改变，缓存要一起刷新
+      await loadFormatsCache();
+      if (announce) toast.success('内核已刷新', { text: `可用 ${state.pick('kernelsReady')} / 共 ${state.pick('kernelsTotal')}` });
+      return true;
+    } catch (err) {
+      reportError('刷新内核失败', wrapError(err));
+      return false;
+    } finally {
+      if (tip) tip.close();
+    }
+  })();
+
+  try {
+    return await refreshPromise;
   } finally {
-    if (tip) tip.close();
-    refreshing = false;
+    refreshPromise = null;
   }
 }
 
@@ -412,9 +442,14 @@ let currentViewId = null;
 let currentInstance = null;
 let pendingAction = null;
 
+/** 视图别名：2.0.0 把「内核」合并进了「插件」页，老链接和老习惯都要能落到新页面 */
+const VIEW_ALIASES = {
+  kernels: 'plugins',
+};
+
 function parseHash() {
   const raw = String(location.hash || '').replace(/^#\/?/, '').split('?')[0].trim();
-  const id = raw || DEFAULT_VIEW;
+  const id = VIEW_ALIASES[raw] || raw || DEFAULT_VIEW;
   return Object.prototype.hasOwnProperty.call(VIEWS, id) ? id : DEFAULT_VIEW;
 }
 
@@ -890,7 +925,7 @@ function buildCommands() {
       title: kernel.name || kernel.id,
       subtitle: `${kernel.id} · ${kernel.statusLabel || kernel.status}`,
       keywords: `kernel ${kernel.id} ${(kernel.tags || []).join(' ')} ${(kernel.inputFormats || []).join(' ')} ${(kernel.outputFormats || []).join(' ')}`,
-      run: () => navigate('#/kernels', { name: 'focus-kernel', payload: kernel.id }),
+      run: () => navigate('#/plugins', { name: 'focus-kernel', payload: kernel.id }),
     });
   }
 
@@ -1014,6 +1049,18 @@ function installTestHooks() {
     },
 
     visibleButtons,
+
+    /** 可用格式清单（由内核能力派生，装/卸插件后会变）——用于验证格式缓存刷新 */
+    formats: () => bridge.kernels.formats(),
+
+    /** 转换页当前渲染出的目标格式下拉项（空值过滤掉） */
+    targetOptions: () =>
+      Array.from(document.querySelectorAll('select[data-role="target"] option'))
+        .map((o) => o.value)
+        .filter(Boolean),
+
+    /** 重扫内核 + 刷新格式缓存：与「插件」页装完/卸完后的动作完全一致 */
+    refreshKernels: (opts) => refreshKernels(opts || { announce: false }),
 
     /** 路由跳转并等待视图挂载完成 */
     async goto(hash) {

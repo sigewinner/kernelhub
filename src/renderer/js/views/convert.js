@@ -487,7 +487,7 @@ export async function mount(host, ctx) {
     kernelSelect.value = vs.kernelId;
     kernelHint.textContent = kernels.length
       ? `共 ${kernels.length} 个可用内核；指定内核后目标格式会按其能力收敛。`
-      : '当前没有可用内核：请到「内核」视图检查依赖缺失项与安装提示。';
+      : '当前没有可用内核：到「插件」页安装插件，或在「已安装」里看依赖缺失的原因。';
   }
 
   function renderChosen() {
@@ -609,7 +609,7 @@ export async function mount(host, ctx) {
 
   function filesHintText() {
     const ready = (store.pick('kernels') || []).filter((k) => k.status === 'ready').length;
-    if (!ready) return '没有可用内核：请到「内核」视图检查依赖缺失项。';
+    if (!ready) return '没有可用内核：请到「插件」页安装插件，或看「已安装」里依赖缺失的原因。';
     if (!store.pick('pending').length) return '添加文件后即可开始：选核与参数由内核清单决定。';
     if (!vs.dstFmt) return '当前操作下没有可用的目标格式。';
     return '就绪：点「开始转换」提交到队列。';
@@ -820,6 +820,7 @@ export async function mount(host, ctx) {
   }
   let lastPending = null;
   let lastKernels = '';
+  let kernelsPrimed = false;
   let lastOps = '';
 
   function syncFromStore({ force = false } = {}) {
@@ -827,9 +828,20 @@ export async function mount(host, ctx) {
     const kernelsSig = (store.pick('kernels') || []).map((k) => `${k.id}:${k.status}`).join(',');
     const opsSig = (store.pick('ops') || []).map((o) => o.op).join(',');
 
+    const kernelsChanged = kernelsPrimed && kernelsSig !== lastKernels;
+    kernelsPrimed = true;
+
     if (force || kernelsSig !== lastKernels) {
       lastKernels = kernelsSig;
       renderKernelSelect();
+      /**
+       * 内核集合变了 → **目标格式必须重算**。
+       *
+       * 这是「装完插件却用不了」的根因：原来这里只重渲染内核下拉，
+       * 目标格式还停留在装插件之前算出来的那份，新插件提供的格式根本选不到。
+       * refreshTargets 内部会在当前选择仍有效时保留它，所以不会打断用户操作。
+       */
+      if (kernelsChanged) refreshTargets();
     }
     if (force || pendingSig !== lastPending) {
       lastPending = pendingSig;

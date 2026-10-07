@@ -507,17 +507,28 @@ function registerIpc() {
 
   handle('plugins:list', (opts) => pluginStore.list({ refresh: Boolean(opts && opts.refresh) }));
 
+  /**
+   * 插件变更后的统一收尾：重建内核表，并把该插件对应的内核视图一并返回。
+   *
+   * 返回内核视图是为了让界面在装完后能立刻说清「能不能用、不能用是缺什么」——
+   * 用户报的「装完用不了」有相当一部分其实是装了 CLI 类插件但没装那个外部程序，
+   * 以前界面上完全看不出原因。
+   */
+  const settlePluginChange = (result, id) => {
+    if (!result || !result.ok) return result;
+    reloadRegistry();
+    const entry = registry.get(id);
+    return { ...result, kernel: entry ? catalog.kernelView(entry) : null };
+  };
+
   handle('plugins:install', async ({ id, mode }) => {
     const result = await pluginStore.install(id, { mode, onProgress: pluginProgress });
-    // 装完立刻重扫内核，界面不用再手动点刷新
-    if (result.ok) reloadRegistry();
-    return result;
+    return settlePluginChange(result, id);
   });
 
   handle('plugins:update', async ({ id, mode }) => {
     const result = await pluginStore.update(id, { mode, onProgress: pluginProgress });
-    if (result.ok) reloadRegistry();
-    return result;
+    return settlePluginChange(result, id);
   });
 
   handle('plugins:uninstall', (id) => {
@@ -1040,15 +1051,86 @@ async function runSelfTest() {
       await probeWin.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
       await new Promise((r) => setTimeout(r, 3500));
       const info = await probeWin.webContents.executeJavaScript(
-        `({ bridge: document.documentElement.dataset.khsBridge, app: !document.getElementById('app').hidden, nav: document.querySelectorAll('#nav button').length, text: (document.getElementById('view') || {}).innerText ? document.getElementById('view').innerText.slice(0, 60) : '' })`,
+        `({ bridge: document.documentElement.dataset.khsBridge, app: !document.getElementById('app').hidden, nav: document.querySelectorAll('#nav button[data-nav]').length, text: (document.getElementById('view') || {}).innerText ? document.getElementById('view').innerText.slice(0, 60) : '' })`,
         true
       );
-      rendererOk = info && info.bridge === 'ready' && info.app === true && info.nav >= 8;
+      // 2.0.0：导航把「内核」并进了「插件」，所以是 7 项（原来是 8 项）
+      rendererOk = info && info.bridge === 'ready' && info.app === true && info.nav === 7;
       rendererDetail = JSON.stringify(info);
     } catch (err) {
       rendererDetail = String(err.message || err);
     }
     step('渲染进程加载 + 桥接就绪 + 导航渲染', rendererOk, rendererDetail);
+
+    /* ---- 界面层断言：2.0.0 把「内核」并进了「插件」页，这里逐项验 ---- */
+    const js = (code) => probeWin.webContents.executeJavaScript(code, true);
+    const settle = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    try {
+      const navIds = await js(
+        `Array.from(document.querySelectorAll('#nav button[data-nav]')).map((b) => b.dataset.nav)`
+      );
+      step(
+        '导航已合并（7 项，含 plugins、无独立 kernels）',
+        navIds.length === 7 && navIds.includes('plugins') && !navIds.includes('kernels'),
+        navIds.join(' / ')
+      );
+
+      await js(`window.__khsTest ? window.__khsTest.goto('#/plugins') : null`);
+      await settle(1200);
+      const tabs = await js(
+        `Array.from(document.querySelectorAll('#view .toolbar .btn')).map((b) => b.innerText.trim())`
+      );
+      step('「插件」页含「已安装 / 可安装」两个标签', tabs.includes('已安装') && tabs.includes('可安装'), tabs.join(' / '));
+
+      const installedRows = await js(`document.querySelectorAll('#view table tbody tr').length`);
+      step('「已安装」标签渲染出内核列表', installedRows >= 4, `${installedRows} 行`);
+
+      // 老链接 #/kernels 要能落到新页面
+      await js(`window.__khsTest ? window.__khsTest.goto('#/kernels') : null`);
+      await settle(900);
+      const afterAlias = await js(`Array.from(document.querySelectorAll('#view .toolbar .btn')).map((b) => b.innerText.trim())`);
+      step('#/kernels 旧链接仍可用（落到插件页）', afterAlias.includes('已安装'), afterAlias.join(' / '));
+    } catch (err) {
+      step('界面层断言', false, String(err.message || err));
+    }
+
+    /* ---- 可选：装一个真插件，验证「装完格式立刻可选」（需要联网，默认不跑） ---- */
+    const installArg = process.argv.find((a) => a.startsWith('--selftest-install'));
+    if (installArg) {
+      const id = installArg.includes('=') ? installArg.split('=')[1] : 'pillow-image';
+      try {
+        const before = await js(`window.__khsTest.formats()`);
+        const { makeFixtures } = require('../shared/fixtures');
+        const fx = makeFixtures(path.join(resolveStateDir(), 'selftest-fixtures'));
+        const png = fx.find((f) => f.endsWith('.png'));
+        await js(`window.__khsTest.addPaths([${JSON.stringify(png)}])`);
+        await js(`window.__khsTest.goto('#/convert')`);
+        await settle(1200);
+        const beforeOpts = await js(`window.__khsTest.targetOptions()`);
+
+        const res = await js(`window.khs.plugins.install(${JSON.stringify(id)})`);
+        step(`安装插件 ${id}`, Boolean(res && res.ok), res && res.ok ? `${res.mode} / ${res.files} 文件` : String((res && res.error) || ''));
+        step(`插件 ${id} 的内核可用`, Boolean(res && res.kernel && res.kernel.status === 'ready'),
+          res && res.kernel ? `${res.kernel.statusLabel}：${res.kernel.detail || res.kernel.engineNote || ''}` : '无内核视图');
+
+        // 界面在装完后会做的两件事：重扫内核 + 刷新格式缓存
+        await js(`window.__khsTest.refreshKernels({ announce: false })`);
+        await settle(1200);
+
+        const after = await js(`window.__khsTest.formats()`);
+        const beforeKeys = new Set((before || []).map((f) => (f && (f.format || f.op)) || ''));
+        const newFmt = (after || []).map((f) => (f && (f.format || f.op)) || '').filter((k) => k && !beforeKeys.has(k));
+        step('装完插件后可用格式增加', newFmt.length > 0, newFmt.slice(0, 15).join(', ') || '（没有新增）');
+
+        const afterOpts = await js(`window.__khsTest.targetOptions()`);
+        const added = (afterOpts || []).filter((v) => !(beforeOpts || []).includes(v));
+        step('转换页的可选格式已自动更新', added.length > 0, added.slice(0, 15).join(', ') || '（没有新增）');
+      } catch (err) {
+        step('装插件后的格式刷新检查', false, String(err.message || err));
+      }
+    }
+
     probeWin.destroy();
 
     const passed = report.steps.filter((s) => s.ok).length;

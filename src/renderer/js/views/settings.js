@@ -17,7 +17,7 @@ import { thousands, platformLabel, prettyJson, orDash } from '../format.js';
 const CATEGORIES = [
   { id: 'appearance', label: '外观' },
   { id: 'language', label: '语言与区域' },
-  { id: 'kernels', label: '内核' },
+  { id: 'kernels', label: '插件与内核' },
   { id: 'queue', label: '队列与性能' },
   { id: 'paths', label: '路径' },
   { id: 'about', label: '关于' },
@@ -283,11 +283,11 @@ export async function mount(host, ctx) {
 
     paneEl.appendChild(group('扫描',
       h('label.check-row', null, autoScan, h('span', { textContent: '启动时自动扫描内核' })),
-      h('div.field__hint', { textContent: '关闭后启动不会重新探测依赖，需要在内核页手动点「重新扫描」。' }),
+      h('div.field__hint', { textContent: '关闭后启动不会重新探测依赖，需要在「插件 → 已安装」里手动点「重新扫描」。' }),
       h('div.pathline', null,
         h('span.dim', { style: { minWidth: '104px' }, textContent: '已停用内核' }),
         h('span.pathline__value', { textContent: `${disabled.length} 个` }),
-        h('a.linkbtn', { href: '#/kernels', textContent: '前往内核页管理' })
+        h('a.linkbtn', { href: '#/plugins', textContent: '前往插件页管理' })
       )
     ));
 

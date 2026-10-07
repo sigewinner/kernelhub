@@ -22,11 +22,12 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const https = require('https');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawn } = require('child_process');
 
 const { isDir, isFile, pluginsDirOf } = require('./paths');
 const { findOnPath } = require('./python');
-const { extractZip, listZip } = require('./zipExtract');
+const { extractZipAsync, listZip } = require('./zipExtract');
+const { downloadToFile } = require('./download');
 
 const DEFAULT_REPO = 'https://github.com/sigewinner/kernelhub-plugins.git';
 const DEFAULT_CATALOG = 'https://raw.githubusercontent.com/sigewinner/kernelhub-plugins/main/catalog.json';
@@ -90,6 +91,17 @@ function copyDir(src, dst) {
     if (e.isDirectory()) copyDir(s, d);
     else fs.copyFileSync(s, d);
   }
+}
+
+/**
+ * 异步版递归复制。
+ *
+ * 安装插件时必须用这个：插件包动辄几百上千个文件（office-text 808 个），
+ * 同步复制会把主进程占住，界面表现为「未响应」。
+ */
+async function copyDirAsync(src, dst) {
+  await fs.promises.mkdir(path.dirname(dst), { recursive: true });
+  await fs.promises.cp(src, dst, { recursive: true });
 }
 
 /** HTTPS GET，跟随重定向（GitHub Release 资产会跳到 objects.githubusercontent.com） */
@@ -473,102 +485,147 @@ class PluginStore {
     };
   }
 
-  /** git 稀疏克隆：只把目标插件目录落到磁盘 */
-  _fetchViaGit(entry, staging, onProgress) {
+  /**
+   * 异步跑一条 git 命令。
+   *
+   * 这里**不能**用 execFileSync —— 之前那版就是同步的，git 稀疏克隆
+   * pillow-image 要 21 秒，整整 21 秒主进程被占死，界面直接「未响应」。
+   * 换成 spawn 异步等，并在 stderr 里抓进度回吐给界面。
+   */
+  _gitRun(args, cwd, onLine) {
     const git = this.detectGit();
-    if (!git) throw new Error('本机没有可用的 git');
-    const repo = `${staging}-repo`;
-    const cfg = this._gitConfigArgs();
-    const run = (args, cwd) =>
-      execFileSync(git, [...cfg, ...args], {
+    if (!git) return Promise.reject(new Error('本机没有可用的 git'));
+    return new Promise((resolve, reject) => {
+      const child = spawn(git, [...this._gitConfigArgs(), ...args], {
         cwd: cwd || this.tmpDir,
-        encoding: 'utf8',
-        timeout: 300000,
-        windowsHide: true,
-        maxBuffer: 32 * 1024 * 1024,
         env: this._gitEnv(),
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
+      let tail = '';
+      const feed = (buf) => {
+        const text = String(buf);
+        tail = (tail + text).slice(-2000);
+        if (onLine) {
+          for (const line of text.split(/\r?\n/)) {
+            if (line.trim()) onLine(line.trim());
+          }
+        }
+      };
+      child.stdout.on('data', feed);
+      child.stderr.on('data', feed);
+      child.on('error', reject);
+      child.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`git ${args[0]} 退出码 ${code}：${tail.trim().split(/\r?\n/).slice(-2).join(' ')}`));
+      });
+    });
+  }
 
-    /**
-     * 克隆会因网络抖动失败（国内访问 GitHub 尤其明显），
-     * 这里做 3 次退避重试；每次失败都把半成品删掉重来，避免
-     * 「expected 'packfile'」这类残骸影响下一次。
-     */
+  /** git 稀疏克隆：只把目标插件目录落到磁盘 */
+  async _fetchViaGit(entry, staging, onProgress) {
+    const repo = `${staging}-repo`;
     const attempts = 3;
     let lastErr = null;
+
     for (let i = 1; i <= attempts; i += 1) {
       try {
         rmrf(repo);
         onProgress({ phase: 'git-clone', percent: 5, message: `克隆插件仓库（稀疏模式，第 ${i}/${attempts} 次）` });
-        run(['clone', '--filter=blob:none', '--sparse', '--depth', '1', this.repoUrl, repo]);
+        await this._gitRun(['clone', '--filter=blob:none', '--sparse', '--depth', '1', this.repoUrl, repo], this.tmpDir, (line) => {
+          // git 把进度写在 stderr，抓关键行回吐，让界面不是干等
+          if (/Receiving objects|Resolving deltas|remote:|Cloning into/i.test(line)) {
+            onProgress({ phase: 'git-clone', percent: 20, message: line.slice(0, 120) });
+          }
+        });
         lastErr = null;
         break;
       } catch (err) {
         lastErr = err;
         rmrf(repo);
         if (i < attempts) {
-          onProgress({ phase: 'git-clone', percent: 5, message: `克隆失败，${i * 3} 秒后重试（${String(err.message || err).split('\n')[0].slice(0, 80)}）` });
-          // 同步退避：execFileSync 是同步的，整个 install 也就同步下来
-          const until = Date.now() + i * 3000;
-          while (Date.now() < until) {
-            /* 忙等，避免引入异步改造 */
-          }
+          onProgress({
+            phase: 'git-clone',
+            percent: 5,
+            message: `克隆失败，${i * 3} 秒后重试（${String(err.message || err).split('\n')[0].slice(0, 80)}）`,
+          });
+          await new Promise((r) => setTimeout(r, i * 3000));
         }
       }
     }
     if (lastErr) throw lastErr;
 
     onProgress({ phase: 'git-checkout', percent: 60, message: `拉取 ${entry.path}` });
-    run(['sparse-checkout', 'set', entry.path.replace(/\\/g, '/')], repo);
+    await this._gitRun(['sparse-checkout', 'set', entry.path.replace(/\\/g, '/')], repo, (line) => {
+      if (/Updating files|Receiving objects/i.test(line)) {
+        onProgress({ phase: 'git-checkout', percent: 70, message: line.slice(0, 120) });
+      }
+    });
 
     const src = path.join(repo, ...entry.path.split('/'));
     if (!isDir(src)) throw new Error(`仓库里没有找到 ${entry.path}`);
-    copyDir(src, staging);
+    onProgress({ phase: 'git-checkout', percent: 80, message: '复制到插件目录' });
+    await copyDirAsync(src, staging);
     rmrf(repo);
     return staging;
   }
 
-  /** HTTPS 回退：下载 Release 资产里的插件 zip */
+  /**
+   * HTTPS 回退：下载 Release 资产里的插件 zip。
+   *
+   * 用 downloadToFile（多连接分片 + 流式落盘 + 全异步），
+   * 再用 extractZipAsync 解压（每 20 个文件让出一次事件循环）。
+   * 这两步都不能同步做，否则几十 MB 的插件一装界面就卡死。
+   */
   async _fetchViaHttp(entry, staging, onProgress) {
     const candidates = await this._bundleCandidates(entry.id, entry.version);
     if (!candidates.length) throw new Error('没有可用的下载地址');
 
+    const conns = Number((this.settings && this.settings.get('pluginDownloadConns', 0)) || 0) || 4;
     const errors = [];
     for (let i = 0; i < candidates.length; i += 1) {
       const cand = candidates[i];
+      const zipPath = `${staging}.zip`;
       try {
         onProgress({ phase: 'download', percent: 0, message: `下载 ${entry.id}-${entry.version}.zip（${cand.label}）` });
-        const { buffer } = await httpGet(cand.url, {
+        const startedAt = Date.now();
+        const res = await downloadToFile(cand.url, zipPath, {
           headers: cand.headers || {},
-          timeout: 45000,
-          onProgress: (p) =>
+          conns,
+          onProgress: (p) => {
+            const mb = (p.received / 1048576).toFixed(1);
+            const tot = (p.total / 1048576).toFixed(1);
+            const secs = Math.max(0.2, (Date.now() - startedAt) / 1000);
+            const speed = (p.received / 1048576 / secs).toFixed(1);
             onProgress({
               phase: 'download',
               percent: p.percent,
-              message: `下载 ${entry.id}（${(p.received / 1048576).toFixed(1)}/${(p.total / 1048576).toFixed(1)} MB）`,
-            }),
+              message: `下载 ${entry.id}　${mb}/${tot} MB　${speed} MB/s　${p.conns} 个连接`,
+            });
+          },
         });
-        if (!buffer || !buffer.length) throw new Error('下载到空文件');
 
-        fs.mkdirSync(this.tmpDir, { recursive: true });
-        const zipPath = `${staging}.zip`;
-        fs.writeFileSync(zipPath, buffer);
-
-        onProgress({ phase: 'extract', percent: 70, message: '解压' });
+        onProgress({ phase: 'extract', percent: 80, message: `解压（${res.conns} 连接，${(res.bytes / 1048576).toFixed(1)} MB）` });
         const raw = `${staging}-raw`;
         rmrf(raw);
-        extractZip(zipPath, raw);
+        await extractZipAsync(zipPath, raw, (p) => {
+          onProgress({
+            phase: 'extract',
+            percent: 80 + Math.round((p.done / p.total) * 12),
+            message: `解压 ${p.done}/${p.total}`,
+          });
+        });
         // 包里是 plugins/<id>/... 的仓库布局，取出来摆到 staging 根
         const inner = path.join(raw, 'plugins', entry.id);
         const picked = isDir(inner) ? inner : raw;
-        copyDir(picked, staging);
+        await copyDirAsync(picked, staging);
         rmrf(raw);
         rmrf(zipPath);
         return staging;
       } catch (err) {
         errors.push(`${cand.label}: ${String(err.message || err).split('\n')[0]}`);
         rmrf(`${staging}-raw`);
-        rmrf(`${staging}.zip`);
+        rmrf(zipPath);
         if (i < candidates.length - 1) {
           onProgress({ phase: 'download', percent: 0, message: `${cand.label} 失败，换下一个地址` });
         }

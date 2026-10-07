@@ -64,13 +64,21 @@ export async function mount(host, ctx) {
   const tableHost = h('div');
   const footEl = h('div.footline');
 
+  /**
+   * embed：被「插件」页当成一个标签页挂载时，页面自己已经有标题栏了，
+   * 这里就不再重复渲染一份 view-head（否则会出现两层标题）。
+   */
+  const head = ctx && ctx.embed
+    ? null
+    : h('div.view-head', null,
+        h('div.view-crumb', { textContent: 'KernelHub Studio' }),
+        h('h1.view-title', { textContent: '内核' }),
+        h('div.view-sub', { textContent: '每个内核 = 一份 CKP 清单 + 一个适配器入口；状态与能力全部来自探测结果。' }),
+        h('div.view-rule')
+      );
+
   const wrap = h('div.view-inner', { dataset: { view: 'kernels' } },
-    h('div.view-head', null,
-      h('div.view-crumb', { textContent: 'KernelHub Studio' }),
-      h('h1.view-title', { textContent: '内核' }),
-      h('div.view-sub', { textContent: '每个内核 = 一份 CKP 清单 + 一个适配器入口；状态与能力全部来自探测结果。' }),
-      h('div.view-rule')
-    ),
+    head,
     h('div.toolbar', null,
       h('div', { style: { width: '240px' } }, searchInput),
       h('div.selectwrap', { style: { width: '130px' } }, statusSelect),
