@@ -1501,18 +1501,33 @@ async function runSelfTest() {
       );
 
       // 高级抽屉：要有过渡配置（不是瞬现瞬消）
+      // 这一步以前偶发失败：goto 之后等 1s 就点「高级」，赶上视图刚挂载、
+      // 工具栏还没渲染完时按钮找不到，点了等于没点。改成轮询按钮 + 点完确认已打开。
       await js(`window.__khsTest ? window.__khsTest.goto('#/convert') : null`);
-      await settle(1000);
-      await js(`(() => {
-        const btn = Array.from(document.querySelectorAll('#view .toolbar .btn')).find((b) => b.innerText.trim() === '高级');
-        if (btn) btn.click();
-      })()`);
-      await settle(700);
+      await settle(900);
+      let advBtnFound = false;
+      for (let i = 0; i < 12; i += 1) {
+        advBtnFound = await js(`(() => {
+          const btns = Array.from(document.querySelectorAll('#view .toolbar .btn'));
+          const btn = btns.find((b) => b.innerText.trim() === '高级');
+          if (!btn) return false;
+          btn.click();
+          return true;
+        })()`);
+        if (advBtnFound) {
+          await settle(700);
+          const opened = await js(`window.__khsTest.sheetState()`);
+          if (opened && opened.open === true) break;
+        }
+        await settle(300);
+      }
       const sheet = await js(`window.__khsTest.sheetState()`);
       step(
         '高级抽屉弹出带缓动（有过渡，不是瞬现）',
         Boolean(sheet) && sheet.open === true && sheet.hasTransition && parseFloat(sheet.transitionDuration) >= 0.2,
-        sheet ? `open=${sheet.open} opacity=${sheet.opacity} 过渡=${sheet.transitionDuration}` : '取不到抽屉状态'
+        sheet
+          ? `找到按钮=${advBtnFound} open=${sheet.open} opacity=${sheet.opacity} 过渡=${sheet.transitionDuration}`
+          : '取不到抽屉状态'
       );
       await js(`(() => {
         const btn = Array.from(document.querySelectorAll('#view .sheet .btn')).find((b) => b.innerText.trim() === '关闭');
@@ -1842,6 +1857,55 @@ async function runSelfTest() {
         emptyProbe
           ? `「${emptyProbe.title}」align=${emptyProbe.alignItems} text=${emptyProbe.textAlign} 水平居中=${emptyProbe.centered}`
           : '取不到空状态'
+      );
+
+      /* ---- 2.2.5：输出目录进摘要 + 表头吸顶无空隙 ---- */
+
+      // 输出目录应当在「任务摘要」里，而不是藏在「高级」抽屉里
+      await js(`window.__khsTest ? window.__khsTest.goto('#/convert') : null`);
+      await settle(1200);
+      const outDirPlace = await js(`(() => {
+        const inSummary = document.querySelector('#view .summary-list .path-row--summary input');
+        const summaryKey = Array.from(document.querySelectorAll('#view .summary-line__k'))
+          .some((el) => /输出目录|Output folder/.test(el.textContent || ''));
+        // 抽屉里的表单（打开后才在 DOM 里）不该再有输出目录输入框
+        const sheetBody = document.querySelector('#view .sheet__body');
+        const inSheet = sheetBody ? Boolean(sheetBody.querySelector('input[aria-label="输出目录"]')) : false;
+        return { inSummary: Boolean(inSummary), summaryKey, inSheet };
+      })()`);
+      step(
+        '输出目录已放进任务摘要（不再藏在高级抽屉里）',
+        Boolean(outDirPlace && outDirPlace.inSummary && outDirPlace.summaryKey && !outDirPlace.inSheet),
+        outDirPlace
+          ? `摘要有输入框=${outDirPlace.inSummary} 有标签=${outDirPlace.summaryKey} 抽屉里还有=${outDirPlace.inSheet}`
+          : '取不到输出目录位置'
+      );
+
+      // 表头吸顶：滚动后表头与滚动容器顶端之间不应有空隙
+      await js(`window.__khsTest ? window.__khsTest.goto('#/formats') : null`);
+      await settle(1400);
+      const sticky = await js(`(() => {
+        const view = document.querySelector('#view');
+        const th = document.querySelector('#view table thead th');
+        if (!view || !th) return null;
+        view.scrollTop = 1400;
+        // 需要真帧：sticky 位置在下一帧才更新
+        return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+          const gap = Math.round((th.getBoundingClientRect().top - view.getBoundingClientRect().top) * 100) / 100;
+          resolve({
+            gap,
+            scrollTop: view.scrollTop,
+            viewPaddingTop: getComputedStyle(view).paddingTop,
+            headerTop: th.getBoundingClientRect().top,
+          });
+        })));
+      })()`);
+      step(
+        '格式表表头吸顶时没有空隙',
+        Boolean(sticky) && sticky.scrollTop > 200 && Math.abs(sticky.gap) <= 1,
+        sticky
+          ? `滚动=${sticky.scrollTop}px 空隙=${sticky.gap}px 容器 padding-top=${sticky.viewPaddingTop}`
+          : '取不到表头位置'
       );
 
       // 回到插件页并切回「可安装」标签：后面的目录渲染断言依赖它

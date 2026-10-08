@@ -217,8 +217,14 @@
   min-width: 0;
   overflow: auto;
   background: var(--c-paper);
-  padding: var(--sp-6) var(--sp-7) var(--sp-8);
-  /* 2.2.4：让内容列能撑满高度 —— 格式页的表格靠这个把下方空间用起来 */
+  /*
+   * 2.2.5：这里**不能有 padding-top**。
+   * 滚动容器的上内边距会把吸顶元素（表头 position: sticky; top: 0）压在内容盒顶端，
+   * 于是滚动时表头上方露出正好等于 padding-top 的一条空隙（实测 32px）——
+   * 看起来就是「表头没贴到顶」。顶部留白改由 .view-inner 提供，效果一样但表头能贴齐。
+   */
+  padding: 0 var(--sp-7) var(--sp-8);
+  /* 让内容列能撑满高度 —— 格式页的表格靠这个把下方空间用起来 */
   display: flex;
   flex-direction: column;
 }
@@ -226,12 +232,13 @@
 /**
  * 视图内容：最大 1200px、**水平居中**（2.2.4）。
  * 原来这里是左对齐 + 右侧留白，宽屏上整块内容贴着左边、右边空一大片，
- * 看起来像没排完版。改成居中之后左右留白对称，才是「留白有致」。
+ * 看起来像没排完版。改成居中之后左右留白对称才是「留白有致」。
  */
 .view-inner {
   width: 100%;
   max-width: var(--w-content-max);
   margin: 0 auto;
+  padding-top: var(--sp-6); /* 顶部留白（原来是 .view 的 padding-top） */
   flex: 1 1 auto;
   min-height: 0;
   display: flex;

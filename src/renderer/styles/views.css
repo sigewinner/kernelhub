@@ -236,6 +236,29 @@
   text-align: left;
 }
 
+/**
+ * 摘要里的「输出目录」行（2.2.5）：
+ * 它带输入框和浏览按钮，不是一行纯文字，所以键固定在左侧、控件占满右侧，
+ * 并给控件一个最大宽度 —— 否则路径会把摘要撑得很宽，其它几行的对齐轴就散了。
+ */
+.summary-line--field {
+  align-items: center;
+}
+
+.path-row--summary {
+  flex: 1 1 auto;
+  max-width: 26rem;
+}
+
+.path-row--summary .input {
+  min-width: 0;
+}
+
+/* 摘要里的复选框单独一行，居中 */
+.summary-line--check {
+  justify-content: center;
+}
+
 /* ================================================================= 队列 */
 
 .joblog {

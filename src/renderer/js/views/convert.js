@@ -6,8 +6,9 @@
  *   工具栏：[添加文件] [清空列表] …右侧：目标格式 ▾  [高级]  [开始转换]
  *   左 5 栏：待转换文件表（文件名 / 格式 / 大小 / 移除，移除是行内图标操作）
  *            底部一行：N 个文件 · 合计 X · 主格式 FMT
- *   右 7 栏：任务摘要（目标格式 / 将使用 / 输出 / 上次结果）+ 进行中的进度
- *   高级（抽屉）：使用内核 / 输出目录 / 参数区 / 命令行预览 / 复位为默认值
+ *   右 7 栏：任务摘要（目标格式 / 将使用 / 输出 / 输出目录 / 与源文件同目录）+ 进行中的进度
+ *   高级（抽屉）：使用内核 / 参数区 / 命令行预览 / 复位为默认值
+ *   （2.2.5：输出目录从抽屉搬到任务摘要）
  *
  * 数据流（全部经 window.khs，UI 不持有任何格式/参数知识）：
  *   pending(文件池) ─┬─→ plan.targets()     → 目标格式下拉
@@ -135,67 +136,12 @@ export async function mount(host, ctx) {
   const dropzone = h('div.filelist', null, fileTable, fileEmpty, fileSummaryEl);
 
   /* --- 右：任务摘要 --- */
-  const chosenValueEl = h('span.summary-line__v', { textContent: '—' });
-  const outputValueEl = h('span.summary-line__v', { textContent: t('与源文件同目录') });
-  const progressHost = h('div.panel.hidden');
 
-  const sameDirCheck = h('input.check', { type: 'checkbox', checked: true });
-  sameDirCheck.addEventListener('change', () => {
-    vs.sameDir = sameDirCheck.checked;
-    syncOutDirUi();
-    renderSummary();
-    refreshPreviewIfOpen();
-  });
-
-  const summaryPanel = h('section.panel', null,
-    h('div.panel__head', null, h('div.panel__title', { textContent: t('任务摘要') })),
-    h('div.summary-list', null,
-      h('div.summary-line', null,
-        h('span.summary-line__k', { textContent: t('目标格式') }),
-        h('span.summary-line__v', { dataset: { role: 'target-summary' }, textContent: '—' })
-      ),
-      h('div.summary-line', null,
-        h('span.summary-line__k', { textContent: t('将使用') }),
-        chosenValueEl
-      ),
-      h('div.summary-line', null,
-        h('span.summary-line__k', { textContent: t('输出') }),
-        outputValueEl
-      ),
-      h('label.check-row', null, sameDirCheck, h('span', { textContent: t('与源文件同目录') }))
-    ),
-    progressHost
-  );
-
-  const wrap = h('div.view-inner', null,
-    h('div.view-head', null,
-      h('h1.view-title', { textContent: t('转换') }),
-      h('div.view-rule')
-    ),
-    toolbar,
-    h('div.grid12', null,
-      h('div.c5', null, dropzone),
-      h('div.c7', null, summaryPanel)
-    )
-  );
-  host.appendChild(wrap);
-
-  /* ------------------------------------------------ 高级面板（右侧抽屉） */
-
-  const sheet = createSheet(host, {
-    id: 'convert-advanced',
-    title: t('高级'),
-    subtitle: t('内核参数 / 输出目录 / 命令行预览'),
-  });
-
-  const kernelSelect = h('select.select', { 'aria-label': t('使用内核') });
-  const candidateFlow = h('div.tagflow');
-  const kernelSection = h('div.param-section', null,
-    h('div.param-section__title', null, h('span', { textContent: t('使用内核') })),
-    h('div.field', null, h('label.label', { textContent: t('内核') }), h('div.selectwrap', null, kernelSelect)),
-    candidateFlow
-  );
-
+  /*
+   * 2.2.5：输出目录从「高级」抽屉搬到这里。
+   * 它是每次转换都要确认的参数（而且和「与源文件同目录」是一对），藏在抽屉里
+   * 等于没人看；放进摘要，转换前一眼就能核对。
+   */
   const outDirInput = h('input.input.input--mono', {
     type: 'text',
     value: vs.outDir,
@@ -227,16 +173,73 @@ export async function mount(host, ctx) {
       }
     },
   });
-  const outDirSection = h('div.param-section', null,
-    h('div.param-section__title', null, h('span', {
-      textContent: t('输出目录'),
-      // 2.1.0：说明不再占一行小字，改为悬停提示
-      title: t('勾选「与源文件同目录」时，每个产物留在各自源文件所在目录。'),
-    })),
-    h('div.field', null,
-      h('label.label', { textContent: t('目录') }),
-      h('div.path-row', null, outDirInput, outDirPickBtn)
+  outDirInput.title = t('勾选「与源文件同目录」时，每个产物留在各自源文件所在目录。');
+
+  const chosenValueEl = h('span.summary-line__v', { textContent: '—' });
+  const outputValueEl = h('span.summary-line__v', { textContent: t('与源文件同目录') });
+  const progressHost = h('div.panel.hidden');
+
+  const sameDirCheck = h('input.check', { type: 'checkbox', checked: true });
+  sameDirCheck.addEventListener('change', () => {
+    vs.sameDir = sameDirCheck.checked;
+    syncOutDirUi();
+    renderSummary();
+    refreshPreviewIfOpen();
+  });
+
+  const summaryPanel = h('section.panel', null,
+    h('div.panel__head', null, h('div.panel__title', { textContent: t('任务摘要') })),
+    h('div.summary-list', null,
+      h('div.summary-line', null,
+        h('span.summary-line__k', { textContent: t('目标格式') }),
+        h('span.summary-line__v', { dataset: { role: 'target-summary' }, textContent: '—' })
+      ),
+      h('div.summary-line', null,
+        h('span.summary-line__k', { textContent: t('将使用') }),
+        chosenValueEl
+      ),
+      h('div.summary-line', null,
+        h('span.summary-line__k', { textContent: t('输出') }),
+        outputValueEl
+      ),
+      h('div.summary-line.summary-line--field', null,
+        h('span.summary-line__k', { textContent: t('输出目录') }),
+        h('div.path-row.path-row--summary', null, outDirInput, outDirPickBtn)
+      ),
+      h('div.summary-line.summary-line--check', null,
+        h('label.check-row', null, sameDirCheck, h('span', { textContent: t('与源文件同目录') }))
+      )
+    ),
+    progressHost
+  );
+
+  const wrap = h('div.view-inner', null,
+    h('div.view-head', null,
+      h('h1.view-title', { textContent: t('转换') }),
+      h('div.view-rule')
+    ),
+    toolbar,
+    h('div.grid12', null,
+      h('div.c5', null, dropzone),
+      h('div.c7', null, summaryPanel)
     )
+  );
+  host.appendChild(wrap);
+
+  /* ------------------------------------------------ 高级面板（右侧抽屉） */
+
+  const sheet = createSheet(host, {
+    id: 'convert-advanced',
+    title: t('高级'),
+    subtitle: t('内核参数 / 输出目录 / 命令行预览'),
+  });
+
+  const kernelSelect = h('select.select', { 'aria-label': t('使用内核') });
+  const candidateFlow = h('div.tagflow');
+  const kernelSection = h('div.param-section', null,
+    h('div.param-section__title', null, h('span', { textContent: t('使用内核') })),
+    h('div.field', null, h('label.label', { textContent: t('内核') }), h('div.selectwrap', null, kernelSelect)),
+    candidateFlow
   );
 
   const paramHost = h('div');
@@ -284,7 +287,6 @@ export async function mount(host, ctx) {
   }, h('span', { textContent: t('复位为默认值') }));
 
   sheet.body.appendChild(kernelSection);
-  sheet.body.appendChild(outDirSection);
   sheet.body.appendChild(paramSection);
   sheet.body.appendChild(previewSection);
   sheet.foot.appendChild(resetBtn);
