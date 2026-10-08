@@ -62,6 +62,13 @@ FFmpeg、PyMuPDF、Pillow、Office 文档这些大块头，在「插件」页按
 设置 → 关于 里有**检测更新**：到 GitHub Release 上查找**同大版本**里最新的版本
 （2.x 只找 2.x，不会把 3.x 推给你），发现新版本可一键下载安装包并启动安装向导。
 
+**界面语言**可在 设置 → 语言与区域 切换（简体中文 / English）。英文目前覆盖
+导航、顶栏、状态栏、命令面板、通知与**整个设置页**；各视图正文将在后续版本补齐 ——
+未覆盖的字符串按设计回退中文，不会出现空白。切换语言后界面会重新加载。
+
+插件与工作区路径支持中文（含空格、全角字符）；`tools/verify-cjk-paths.js` 会把
+纯中文目录、中文文件名、外部命令行内核（ffmpeg）、文本内核这几条链路全部跑一遍。
+
 | | |
 |---|---|
 | ![高级抽屉](docs/screenshots/06-convert-advanced.png) | ![协议规范](docs/screenshots/08-protocol.png) |
@@ -79,8 +86,8 @@ FFmpeg、PyMuPDF、Pillow、Office 文档这些大块头，在「插件」页按
 
 | 文件 | 大小 | 说明 |
 |---|---|---|
-| `KernelHub Studio-2.2.0-setup.exe` | 89.9 MB | 安装版：可选安装目录，自动建快捷方式 |
-| `KernelHub Studio-2.2.0-portable.exe` | 89.6 MB | 便携版：免安装，首次启动要自解压，稍慢十几秒 |
+| `KernelHub Studio-2.2.1-setup.exe` | 89.9 MB | 安装版：可选安装目录，自动建快捷方式 |
+| `KernelHub Studio-2.2.1-portable.exe` | 89.6 MB | 便携版：免安装，首次启动要自解压，稍慢十几秒 |
 
 ### 2. 系统要求
 

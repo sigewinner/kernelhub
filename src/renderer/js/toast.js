@@ -21,6 +21,7 @@
 import { h, clear, srText } from './dom.js';
 import { icon } from './icons.js';
 import { pushLogEntry } from './state.js';
+import { t } from './i18n.js';
 
 const TYPE_META = {
   success: { icon: 'success', defaultTitle: '操作成功', ttl: 3000 },
@@ -107,10 +108,10 @@ function show(type, title, opts, opts2) {
 
   const closeBtn = h('button.toast__close', {
     type: 'button',
-    title: '关闭',
+    title: t('关闭'),
     'aria-label': '关闭通知',
     on: { click: () => close() },
-  }, icon('close', { size: 13 }), srText('关闭通知'));
+  }, icon('close', { size: 13 }), srText(t('关闭通知')));
 
   const body = h('div.toast__body');
   const el = h(
@@ -264,7 +265,7 @@ export const toast = {
     return show('error', title || '操作失败', {
       text: bits.join(''),
       actions: detail
-        ? [{ label: '查看详情', run: () => toast.detail(title || '错误详情', detail), keepOpen: true }]
+        ? [{ label: t('查看详情'), run: () => toast.detail(title || '错误详情', detail), keepOpen: true }]
         : undefined,
       ...extra,
     });

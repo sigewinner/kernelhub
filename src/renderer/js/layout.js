@@ -16,6 +16,7 @@ import { h, clear, on, qs, srText, nextFrame, copyText, iconAction } from './dom
 import { icon } from './icons.js';
 import { shortcut } from './format.js';
 import { toast } from './toast.js';
+import { t } from './i18n.js';
 
 /* --------------------------------------------------------------- 导航定义 */
 
@@ -27,13 +28,13 @@ import { toast } from './toast.js';
  * 分成两页只会让人在两个页面之间来回找。`#/kernels` 仍可用（路由里做了别名）。
  */
 export const NAV_ITEMS = [
-  { id: 'convert', label: '转换', num: '01', hash: '#/convert', shortcut: 'mod+1', icon: 'convert' },
-  { id: 'batch', label: '队列', num: '02', hash: '#/batch', shortcut: 'mod+2', icon: 'queue' },
-  { id: 'plugins', label: '插件', num: '03', hash: '#/plugins', shortcut: 'mod+3', icon: 'plugins' },
-  { id: 'formats', label: '格式', num: '04', hash: '#/formats', shortcut: 'mod+4', icon: 'matrix' },
-  { id: 'protocol', label: '协议', num: '05', hash: '#/protocol', shortcut: 'mod+5', icon: 'book' },
-  { id: 'logs', label: '日志', num: '06', hash: '#/logs', shortcut: 'mod+6', icon: 'logs' },
-  { id: 'settings', label: '设置', num: '', hash: '#/settings', shortcut: 'mod+7', icon: 'settings' },
+  { id: 'convert', label: t('转换'), num: '01', hash: '#/convert', shortcut: 'mod+1', icon: 'convert' },
+  { id: 'batch', label: t('队列'), num: '02', hash: '#/batch', shortcut: 'mod+2', icon: 'queue' },
+  { id: 'plugins', label: t('插件'), num: '03', hash: '#/plugins', shortcut: 'mod+3', icon: 'plugins' },
+  { id: 'formats', label: t('格式'), num: '04', hash: '#/formats', shortcut: 'mod+4', icon: 'matrix' },
+  { id: 'protocol', label: t('协议'), num: '05', hash: '#/protocol', shortcut: 'mod+5', icon: 'book' },
+  { id: 'logs', label: t('日志'), num: '06', hash: '#/logs', shortcut: 'mod+6', icon: 'logs' },
+  { id: 'settings', label: t('设置'), num: '', hash: '#/settings', shortcut: 'mod+7', icon: 'settings' },
 ];
 
 /** 视图 id → 中文标题（面包屑与命令面板共用） */
@@ -60,7 +61,7 @@ export function createLayout(options = {}) {
   const toggleTheme = typeof options.toggleTheme === 'function' ? options.toggleTheme : () => {};
   const reportError = typeof options.reportError === 'function'
     ? options.reportError
-    : (err) => toast.exception('界面操作失败', err);
+    : (err) => toast.exception(t('界面操作失败'), err);
 
   const els = {
     titlebarVersion: qs('#titlebar-version'),
@@ -125,7 +126,7 @@ export function createLayout(options = {}) {
     if (!els.themeToggle) return;
     const next = theme === 'dark' ? 'light' : 'dark';
     els.themeToggle.dataset.themeToggle = next;
-    els.themeToggle.title = next === 'dark' ? '切换到深色主题' : '切换到浅色主题';
+    els.themeToggle.title = next === 'dark' ? t('切换到深色主题') : t('切换到浅色主题');
     clear(els.themeToggle);
     els.themeToggle.appendChild(icon(next === 'dark' ? 'moon' : 'theme', { size: 15 }));
     els.themeToggle.appendChild(srText(els.themeToggle.title));
@@ -137,7 +138,7 @@ export function createLayout(options = {}) {
     clear(els.winMax);
     els.winMax.appendChild(icon(maximized ? 'window' : 'square', { size: 13 }));
     els.winMax.appendChild(srText(maximized ? '向下还原窗口' : '最大化窗口'));
-    els.winMax.title = maximized ? '向下还原' : '最大化';
+    els.winMax.title = maximized ? t('向下还原') : t('最大化');
   }
 
   /* ---------------------------------------------------------------- 侧栏 */
@@ -156,7 +157,7 @@ export function createLayout(options = {}) {
       const itemEl = h('button.nav__item', {
         type: 'button',
         role: 'tab',
-        title: `${item.label}（${shortcut(item.shortcut)}）`,
+        title: t('{label}（{kbd}）', { label: item.label, kbd: shortcut(item.shortcut) }),
         dataset: { nav: item.id },
         on: { click: () => navigate(item.hash) },
       },
@@ -172,11 +173,11 @@ export function createLayout(options = {}) {
     const commandEl = h('button.nav__item', {
       id: 'cmdk-trigger',
       type: 'button',
-      title: `命令面板（${shortcut('mod+K')}）`,
+      title: t('命令面板（{kbd}）', { kbd: shortcut('mod+K') }),
       on: { click: () => openPalette() },
     },
       h('span.nav__num', { textContent: '' }),
-      h('span.nav__label', { textContent: '命令面板' }),
+      h('span.nav__label', { textContent: t('命令面板') }),
       h('span.nav__hint', { textContent: shortcut('mod+K') })
     );
     els.nav.appendChild(commandEl);
@@ -225,15 +226,15 @@ export function createLayout(options = {}) {
     clear(els.kernelbar);
 
     if (state.bootPhase === 'loading' && !total) {
-      els.kernelbar.appendChild(h('span', { textContent: '内核状态载入中…' }));
+      els.kernelbar.appendChild(h('span', { textContent: t('内核状态载入中…') }));
       return;
     }
     const tone = state.bootPhase === 'error' ? 'dot--err' : ready > 0 ? 'dot--ok' : 'dot--warn';
     els.kernelbar.appendChild(h('div.sidebar__status-line', null,
       h('span', { class: `dot ${tone}` }),
-      h('span', { textContent: '内核' }),
+      h('span', { textContent: t('内核') }),
       h('span.sidebar__status-num', { textContent: `${ready} / ${total}` }),
-      h('span', { textContent: '可用' })
+      h('span', { textContent: t('可用') })
     ));
   }
 
@@ -253,29 +254,34 @@ export function createLayout(options = {}) {
     const tone = state.bootPhase === 'error' ? 'dot--err'
       : running > 0 ? 'dot--busy'
         : state.kernelsReady > 0 ? 'dot--ok' : 'dot--warn';
-    const readyText = state.bootPhase === 'error' ? '启动异常'
-      : running > 0 ? `转换中（${running}）`
-        : queued > 0 ? `队列就绪（${queued} 待处理）`
-          : state.bootPhase === 'loading' ? '正在启动…' : '就绪';
+    const readyText = state.bootPhase === 'error' ? t('启动异常')
+      : running > 0 ? t('转换中（{n}）', { n: running })
+        : queued > 0 ? t('队列就绪（{n} 待处理）', { n: queued })
+          : state.bootPhase === 'loading' ? t('正在启动…') : t('就绪');
 
-    els.statusbar.appendChild(h('div.statusbar__item', { title: '应用状态' },
+    els.statusbar.appendChild(h('div.statusbar__item', { title: t('应用状态') },
       h('span', { class: `dot ${tone}` }),
       h('span', { textContent: readyText })
     ));
 
-    els.statusbar.appendChild(h('div.statusbar__item', { title: '可用内核 / 内核总数' },
-      h('span', { textContent: `内核 ${state.kernelsReady || 0}/${state.kernelsTotal || 0} 可用` })
+    els.statusbar.appendChild(h('div.statusbar__item', { title: t('可用内核 / 内核总数') },
+      h('span', {
+        textContent: t('内核 {ready}/{total} 可用', {
+          ready: state.kernelsReady || 0,
+          total: state.kernelsTotal || 0,
+        }),
+      })
     ));
 
     if (total || queued || failed) {
-      els.statusbar.appendChild(h('div.statusbar__item', { title: '队列计数' },
-        h('span', { textContent: `队列 ${total}（待 ${queued} · 失败 ${failed}）` })
+      els.statusbar.appendChild(h('div.statusbar__item', { title: t('队列计数') },
+        h('span', { textContent: t('队列 {total}（待 {queued} · 失败 {failed}）', { total, queued, failed }) })
       ));
     }
 
     if (pending) {
-      els.statusbar.appendChild(h('div.statusbar__item', { title: '待转换文件' },
-        h('span', { textContent: `待转换 ${pending}` })
+      els.statusbar.appendChild(h('div.statusbar__item', { title: t('待转换文件') },
+        h('span', { textContent: t('待转换 {n}', { n: pending }) })
       ));
     }
 
@@ -300,18 +306,18 @@ export function createLayout(options = {}) {
     if (state.queuePaused) {
       els.statusbar.appendChild(h('div.statusbar__item', null,
         h('span', { class: 'dot dot--warn' }),
-        h('span', { textContent: '队列已暂停' })
+        h('span', { textContent: t('队列已暂停') })
       ));
     }
 
     if (state.logCount) {
-      els.statusbar.appendChild(h('div.statusbar__item', { title: '运行日志行数' },
-        h('span', { textContent: `日志 ${state.logCount}` })
+      els.statusbar.appendChild(h('div.statusbar__item', { title: t('运行日志行数') },
+        h('span', { textContent: t('日志 {n}', { n: state.logCount }) })
       ));
     }
 
-    els.statusbar.appendChild(h('div.statusbar__item', { title: '当前协议版本' },
-      h('span.statusbar__mono', { textContent: state.ckp ? `CKP ${state.ckp}` : 'CKP —' })
+    els.statusbar.appendChild(h('div.statusbar__item', { title: t('当前协议版本') },
+      h('span.statusbar__mono', { textContent: state.ckp ? t('CKP {v}', { v: state.ckp }) : t('CKP —') })
     ));
   }
 
@@ -351,7 +357,7 @@ export function createLayout(options = {}) {
   function bindGlobal() {
     disposers.push(on(window, 'khs:ui-error', (event) => {
       const detail = event.detail || {};
-      toast.error(detail.title || '界面操作失败', detail.message || '未知原因');
+      toast.error(detail.title || t('界面操作失败'), detail.message || t('未知原因'));
     }));
   }
 
@@ -408,20 +414,20 @@ function createPalette({ host, getCommands, onRun }) {
 
   const inputEl = h('input.cmdk__input', {
     type: 'text',
-    placeholder: '输入命令、视图、内核或格式名…',
+    placeholder: t('输入命令、视图、内核或格式名…'),
     spellcheck: 'false',
-    'aria-label': '命令面板搜索',
+    'aria-label': t('命令面板搜索'),
   });
   const listEl = h('div.cmdk__list', { role: 'listbox' });
-  const countEl = h('span', { dataset: { role: 'count' }, textContent: '0 项' });
+  const countEl = h('span', { dataset: { role: 'count' }, textContent: t('0 项') });
 
   const root = h('div.cmdk', null,
     h('div.cmdk__search', null, inputEl),
     listEl,
     h('div.cmdk__foot', null,
-      h('span', null, '↑↓ 选择'),
-      h('span', null, 'Enter 执行'),
-      h('span', null, 'Esc 关闭'),
+      h('span', null, t('↑↓ 选择')),
+      h('span', null, t('Enter 执行')),
+      h('span', null, t('Esc 关闭')),
       h('span.grow'),
       countEl
     )
@@ -447,13 +453,13 @@ function createPalette({ host, getCommands, onRun }) {
     clear(listEl);
     if (!filtered.length) {
       listEl.appendChild(h('div.empty', { style: { padding: 'var(--sp-6) var(--sp-4)' } },
-        h('div.empty__title', { textContent: '没有匹配项' }),
-        h('div.empty__text', { textContent: '换个关键词，或直接用快捷键操作。' })
+        h('div.empty__title', { textContent: t('没有匹配项') }),
+        h('div.empty__text', { textContent: t('换个关键词，或直接用快捷键操作。') })
       ));
     } else {
       let currentGroup = null;
       filtered.forEach((item, index) => {
-        const group = item.group || '命令';
+        const group = t(item.group || '命令');
         if (group !== currentGroup) {
           currentGroup = group;
           listEl.appendChild(h('div.cmdk__group', { textContent: group }));
@@ -481,7 +487,7 @@ function createPalette({ host, getCommands, onRun }) {
         ));
       });
     }
-    countEl.textContent = `${filtered.length} 项`;
+    countEl.textContent = t('{n} 项', { n: filtered.length });
     syncSelection();
   }
 
@@ -609,12 +615,12 @@ export function statusBadge(label, tone, opts = {}) {
 /** 作业状态 → 中文标签与徽标色 */
 export function jobStateMeta(state) {
   switch (state) {
-    case 'queued': return { label: '排队中', tone: 'mute' };
-    case 'running': return { label: '转换中', tone: 'accent' };
-    case 'done': return { label: '已完成', tone: 'ok' };
-    case 'failed': return { label: '失败', tone: 'err' };
-    case 'cancelled': return { label: '已取消', tone: 'mute' };
-    default: return { label: state || '未知', tone: 'mute' };
+    case 'queued': return { label: t('排队中'), tone: 'mute' };
+    case 'running': return { label: t('转换中'), tone: 'accent' };
+    case 'done': return { label: t('已完成'), tone: 'ok' };
+    case 'failed': return { label: t('失败'), tone: 'err' };
+    case 'cancelled': return { label: t('已取消'), tone: 'mute' };
+    default: return { label: t(state || '未知'), tone: 'mute' };
   }
 }
 
@@ -643,8 +649,8 @@ export function copyButton(value, label = '复制', opts = {}) {
     onClick: async () => {
       const text = typeof value === 'function' ? value() : value;
       const ok = await copyText(text);
-      if (ok) toast.success('已复制', { text: `${String(text || '').length} 个字符` });
-      else toast.warn('复制失败', '当前环境不允许访问剪贴板，请手动选择文本');
+      if (ok) toast.success(t('已复制'), { text: `${String(text || '').length} 个字符` });
+      else toast.warn(t('复制失败'), '当前环境不允许访问剪贴板，请手动选择文本');
     },
   });
 }

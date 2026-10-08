@@ -44,6 +44,12 @@ const DEFAULTS = {
    * 默认国内镜像；装上失败会自动回退到 PyPI 官方源。
    */
   pipIndexUrl: 'https://pypi.tuna.tsinghua.edu.cn/simple',
+  /**
+   * 界面语言（2.2.1）：'zh-CN' | 'en-US'。
+   * 这里存权威值；渲染层把它镜像到 localStorage —— i18n.js 需要在模块顶层
+   * **同步**读到语言（NAV_ITEMS 之类在模块求值时就要用 t()），异步 IPC 来不及。
+   */
+  locale: 'zh-CN',
 };
 
 class Settings {

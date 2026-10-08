@@ -13,6 +13,7 @@ import { h, clear, copyText, srText } from './dom.js';
 import { icon } from './icons.js';
 import { prettyJson } from './format.js';
 import { toast } from './toast.js';
+import { t } from './i18n.js';
 
 let host = null;
 let current = null; // { close }
@@ -54,10 +55,10 @@ export function open(opts = {}) {
     opts.subtitle ? h('div.modal__sub', { textContent: String(opts.subtitle) }) : null,
     h('button.modal__close', {
       type: 'button',
-      title: '关闭（Esc）',
+      title: t('关闭（Esc）'),
       'aria-label': '关闭',
       on: { click: () => close(undefined, { via: 'button' }) },
-    }, icon('close', { size: 15 }), srText('关闭对话框'))
+    }, icon('close', { size: 15 }), srText(t('关闭对话框')))
   );
 
   const bodyEl = h('div.modal__body');
@@ -81,7 +82,7 @@ export function open(opts = {}) {
             try {
               handled = action.run() === true;
             } catch (err) {
-              toast.exception('对话框操作失败', err);
+              toast.exception(t('对话框操作失败'), err);
               handled = true;
             }
           }
@@ -178,8 +179,8 @@ export function codeBlock(content, { lang = '', wrap = true, maxHeight = '' } = 
     on: {
       click: async () => {
         const ok = await copyText(textValue);
-        if (ok) toast.success('已复制到剪贴板', { text: `${textValue.length} 个字符` });
-        else toast.warn('复制失败', '当前环境不允许访问剪贴板，请手动选择文本复制');
+        if (ok) toast.success(t('已复制到剪贴板'), { text: `${textValue.length} 个字符` });
+        else toast.warn(t('复制失败'), '当前环境不允许访问剪贴板，请手动选择文本复制');
       },
     },
   }, icon('copy', { size: 14 }), h('span', '复制'));
@@ -205,8 +206,8 @@ export function pathChip(pathValue, { label = '', onOpen = null } = {}) {
           return;
         }
         const ok = await copyText(value);
-        if (ok) toast.success('路径已复制');
-        else toast.warn('复制失败', '请手动选择路径文本');
+        if (ok) toast.success(t('路径已复制'));
+        else toast.warn(t('复制失败'), '请手动选择路径文本');
       },
     },
   }, icon('copy', { size: 12 }), h('span.path-chip__text', { textContent: label || value }));
@@ -253,7 +254,7 @@ export async function detail(title, text, opts = {}) {
     subtitle: opts.subtitle,
     size: opts.size || 'lg',
     body: codeBlock(text, { lang: opts.lang || `纯文本 · ${String(text || '').length} 字符`, wrap: opts.wrap !== false }),
-    actions: [{ label: '关闭', kind: 'ghost', value: false }],
+    actions: [{ label: t('关闭'), kind: 'ghost', value: false }],
   });
   return result;
 }
@@ -274,10 +275,10 @@ export async function commandPreview(preview) {
       preview.detail ? h('div.error-state__detail', { textContent: String(preview.detail) }) : null
     ));
     const { result } = open({
-      title: '命令行预览',
+      title: t('命令行预览'),
       size: 'lg',
       body,
-      actions: [{ label: '关闭', kind: 'ghost', value: false }],
+      actions: [{ label: t('关闭'), kind: 'ghost', value: false }],
     });
     return result;
   }
@@ -313,25 +314,25 @@ export async function commandPreview(preview) {
   }
 
   const { result } = open({
-    title: '真实命令行预览',
-    subtitle: '不会执行任何命令',
+    title: t('真实命令行预览'),
+    subtitle: t('不会执行任何命令'),
     size: 'xl',
     body,
     actions: [
       {
-        label: '复制 argv',
+        label: t('复制 argv'),
         icon: 'copy',
         kind: 'ghost',
         close: false,
         run: async () => {
           const text = argv ? argv.join(' ') : '';
           const ok = await copyText(text);
-          if (ok) toast.success('已复制 argv');
-          else toast.warn('复制失败', '请手动选择文本复制');
+          if (ok) toast.success(t('已复制 argv'));
+          else toast.warn(t('复制失败'), '请手动选择文本复制');
           return false;
         },
       },
-      { label: '关闭', kind: 'ghost', value: false },
+      { label: t('关闭'), kind: 'ghost', value: false },
     ],
   });
   return result;
@@ -356,7 +357,7 @@ export async function json(title, value, opts = {}) {
     subtitle: opts.subtitle,
     size: opts.size || 'xl',
     body,
-    actions: [{ label: '关闭', kind: 'ghost', value: false }],
+    actions: [{ label: t('关闭'), kind: 'ghost', value: false }],
   });
   return result;
 }

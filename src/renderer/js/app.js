@@ -21,6 +21,7 @@ import { state, pushLogEntry, replaceLogs, countsFromJobs } from './state.js';
 import { createLayout, NAV_ITEMS } from './layout.js';
 import { setPlatform, shortcut } from './format.js';
 import { icon } from './icons.js';
+import { t, getLocale, initLocale, translationCount, hasTranslation } from './i18n.js';
 
 /* ------------------------------------------------------------- 能力探测 */
 
@@ -60,7 +61,7 @@ function reportError(title, err) {
   uiErrors.push(`${title}：${message}`);
   toast.error(title, {
     text: message,
-    actions: detail ? [{ label: '查看详情', run: () => modal.detail(title, detail), keepOpen: true }] : undefined,
+    actions: detail ? [{ label: t('查看详情'), run: () => modal.detail(title, detail), keepOpen: true }] : undefined,
   });
 }
 
@@ -105,7 +106,7 @@ async function patchSettings(patch, options = {}) {
       parallel: Number(next.maxParallel) || state.pick('parallel'),
     });
     if (patch && patch.theme !== undefined) applyTheme(next.theme);
-    if (options.silent !== true) toast.success('设置已保存');
+    if (options.silent !== true) toast.success(t('设置已保存'));
     return next;
   } catch (err) {
     reportError('保存设置失败', wrapError(err));
@@ -167,7 +168,7 @@ function clearPending() {
 async function boot() {
   state.set({ bootPhase: 'loading', bootError: null });
   renderShell();
-  setSplashStatus('读取运行环境', 12);
+  setSplashStatus(t('读取运行环境'), 12);
 
   try {
     const [info, layout2] = await Promise.all([
@@ -176,6 +177,19 @@ async function boot() {
     ]);
     setPlatform(info && info.platform);
     const settings = await bridge.settings.get();
+
+    /**
+     * 语言（2.2.1）：设置里存的是权威值，localStorage 只是给模块顶层同步读取的镜像。
+     * 两者不一致 → 写回镜像并重载一次，让所有模块按新语言重新构建
+     * （比逐个重渲染安全得多；写完镜像后再进来就一致了，不会来回重载）。
+     */
+    const wanted = settings && settings.locale === 'en-US' ? 'en-US' : 'zh-CN';
+    if (wanted !== getLocale()) {
+      initLocale(wanted);
+      location.reload();
+      return;
+    }
+
     state.set({
       info,
       layout: layout2,
@@ -189,7 +203,7 @@ async function boot() {
     applyTheme(settings && settings.theme);
     renderShell();
     setSplashCkp((info && info.ckp) || '');
-    setSplashStatus('载入内核与队列', 45);
+    setSplashStatus(t('载入内核与队列'), 45);
   } catch (err) {
     state.set({ bootPhase: 'error', bootError: wrapError(err, '读取应用信息失败') });
     renderShell();
@@ -203,7 +217,7 @@ async function boot() {
     loadLogs({ silent: true }),
   ]);
 
-  setSplashStatus('准备界面', 85);
+  setSplashStatus(t('准备界面'), 85);
   state.set({ bootPhase: 'ready' });
   renderShell();
 }
@@ -271,7 +285,7 @@ async function refreshKernels({ announce = true } = {}) {
   if (refreshPromise) return refreshPromise;
 
   refreshPromise = (async () => {
-    const tip = announce ? toast.info('正在重新扫描内核…', { text: '会重新探测每个内核的运行时依赖', ttl: 0 }) : null;
+    const tip = announce ? toast.info(t('正在重新扫描内核…'), { text: '会重新探测每个内核的运行时依赖', ttl: 0 }) : null;
     try {
       const res = await bridge.kernels.refresh();
       state.set({
@@ -281,7 +295,7 @@ async function refreshKernels({ announce = true } = {}) {
       await loadKernels({ silent: true });
       // 内核集合变了 → 可用格式也随之改变，缓存要一起刷新
       await loadFormatsCache();
-      if (announce) toast.success('内核已刷新', { text: `可用 ${state.pick('kernelsReady')} / 共 ${state.pick('kernelsTotal')}` });
+      if (announce) toast.success(t('内核已刷新'), { text: `可用 ${state.pick('kernelsReady')} / 共 ${state.pick('kernelsTotal')}` });
       return true;
     } catch (err) {
       reportError('刷新内核失败', wrapError(err));
@@ -356,7 +370,7 @@ function applyJobUpdate(job) {
       toast.success(`转换完成：${job.outputName || job.sourceName || ''}`, {
         text: `${job.sourceFormat || '?'} → ${job.targetFormat || '?'} · ${job.size || ''} · ${job.kernelName || job.kernelUsed || ''}`,
         actions: job.output ? [{
-          label: '打开产物',
+          label: t('打开产物'),
           run: () => Promise.resolve(bridge.fs.openPath(job.output)).catch((err) => reportError('打开产物失败', wrapError(err))),
         }] : undefined,
       });
@@ -365,11 +379,11 @@ function applyJobUpdate(job) {
         text: (job.error && job.error.message) || '内核返回失败',
         actions: [
           {
-            label: '重试',
+            label: t('重试'),
             run: () => Promise.resolve(bridge.queue.retry(job.id)).catch((err) => reportError('重试失败', wrapError(err))),
           },
           job.error && job.error.detail
-            ? { label: '详情', keepOpen: true, run: () => modal.detail('失败详情', job.error.detail) }
+            ? { label: t('详情'), keepOpen: true, run: () => modal.detail('失败详情', job.error.detail) }
             : null,
         ].filter(Boolean),
       });
@@ -382,7 +396,7 @@ function applyJobUpdate(job) {
 /** 添加文件（快捷键 / 命令面板 / 视图按钮共用一条路径） */
 async function pickFiles({ navigateAfter = true } = {}) {
   try {
-    const res = await bridge.fs.pickFiles({ title: '添加到待转换列表' });
+    const res = await bridge.fs.pickFiles({ title: t('添加到待转换列表') });
     const files = (res && res.files) || [];
     if (!files.length) return 0;
     const { added, skipped } = addPendingFiles(files);
@@ -390,7 +404,7 @@ async function pickFiles({ navigateAfter = true } = {}) {
       if (navigateAfter) navigate('#/convert');
       toast.success(`已添加 ${added} 个文件`, skipped ? { text: `${skipped} 个重复文件已忽略` } : undefined);
     } else {
-      toast.warn('没有新增文件', { text: skipped ? `${skipped} 个文件已在列表中` : '所选内容不是文件' });
+      toast.warn(t('没有新增文件'), { text: skipped ? `${skipped} 个文件已在列表中` : '所选内容不是文件' });
     }
     return added;
   } catch (err) {
@@ -402,10 +416,10 @@ async function pickFiles({ navigateAfter = true } = {}) {
 /** 添加目录（目录会被递归展开，展开逻辑在主进程 fs:expand） */
 async function pickFolder({ navigateAfter = true } = {}) {
   try {
-    const res = await bridge.fs.pickFolder({ title: '添加目录（递归展开）' });
+    const res = await bridge.fs.pickFolder({ title: t('添加目录（递归展开）') });
     const folder = res && res.folder;
     if (!folder) return 0;
-    return expandPaths([folder], { navigateAfter, label: '目录' });
+    return expandPaths([folder], { navigateAfter, label: t('目录') });
   } catch (err) {
     reportError('添加目录失败', wrapError(err));
     return 0;
@@ -420,7 +434,7 @@ async function expandPaths(paths, opts = {}) {
     const res = await bridge.fs.expand(list);
     const files = (res && res.files) || [];
     if (!files.length) {
-      if (!opts.silent) toast.warn('没有可用的文件', { text: '所选路径下没有可识别的文件（或全部为隐藏项）' });
+      if (!opts.silent) toast.warn(t('没有可用的文件'), { text: '所选路径下没有可识别的文件（或全部为隐藏项）' });
       return 0;
     }
     const { added, skipped } = addPendingFiles(files);
@@ -431,7 +445,7 @@ async function expandPaths(paths, opts = {}) {
           text: [skipped ? `${skipped} 个重复已忽略` : '', `共 ${files.length} 个文件`].filter(Boolean).join(' · '),
         });
       } else {
-        toast.info('文件已在列表中', { text: `${skipped} 个文件此前已加入` });
+        toast.info(t('文件已在列表中'), { text: `${skipped} 个文件此前已加入` });
       }
     }
     return added;
@@ -631,8 +645,8 @@ function buildViewError(viewId, err) {
         h('div', { textContent: `视图「${viewId}」无法显示` }),
         h('div', { textContent: err.message || String(err) })
       ),
-      h('button.linkbtn', { type: 'button', on: { click: () => renderRoute() } }, h('span', { textContent: '重试' })),
-      h('button.linkbtn', { type: 'button', on: { click: () => navigate('#/convert') } }, h('span', { textContent: '回到转换' }))
+      h('button.linkbtn', { type: 'button', on: { click: () => renderRoute() } }, h('span', { textContent: t('重试') })),
+      h('button.linkbtn', { type: 'button', on: { click: () => navigate('#/convert') } }, h('span', { textContent: t('回到转换') }))
     )
   );
 }
@@ -678,7 +692,7 @@ function bindBridgeEvents() {
       const bits = [`完成 ${c.done || 0}`];
       if (c.failed) bits.push(`失败 ${c.failed}`);
       if (c.cancelled) bits.push(`取消 ${c.cancelled}`);
-      toast.info('队列已空闲', { text: bits.join(' · ') });
+      toast.info(t('队列已空闲'), { text: bits.join(' · ') });
     }
   }));
 
@@ -774,21 +788,21 @@ function bindGlobalDrop() {
     event.preventDefault();
     const paths = collectDropPaths(event);
     if (!paths.length) {
-      toast.warn('没有识别到文件路径', { text: '请改用「添加文件」按钮，或把文件拖到待转换列表上。' });
+      toast.warn(t('没有识别到文件路径'), { text: '请改用「添加文件」按钮，或把文件拖到待转换列表上。' });
       return;
     }
-    await expandPaths(paths, { label: '拖入内容' });
+    await expandPaths(paths, { label: t('拖入内容') });
   });
 }
 
 /* ------------------------------------------------------------ 快捷键 */
 
 const HOTKEYS = [
-  { id: 'pick-files', keys: 'mod+o', label: '添加文件', run: () => pickFiles() },
-  { id: 'pick-folder', keys: 'mod+shift+o', label: '添加目录', run: () => pickFolder() },
-  { id: 'start-convert', keys: 'mod+enter', label: '开始转换', run: () => runAction('start-convert') },
-  { id: 'refresh-kernels', keys: 'f5', label: '刷新内核', run: () => refreshKernels() },
-  { id: 'palette', keys: 'mod+k', label: '命令面板', run: () => layout.openPalette() },
+  { id: 'pick-files', keys: 'mod+o', label: t('添加文件'), run: () => pickFiles() },
+  { id: 'pick-folder', keys: 'mod+shift+o', label: t('添加目录'), run: () => pickFolder() },
+  { id: 'start-convert', keys: 'mod+enter', label: t('开始转换'), run: () => runAction('start-convert') },
+  { id: 'refresh-kernels', keys: 'f5', label: t('刷新内核'), run: () => refreshKernels() },
+  { id: 'palette', keys: 'mod+k', label: t('命令面板'), run: () => layout.openPalette() },
 ];
 
 /** 具名动作：视图注册自己能响应的动作（如「开始转换」），快捷键只负责触发 */
@@ -802,7 +816,7 @@ function registerAction(name, fn) {
 function runAction(name, payload) {
   const fn = actions.get(name);
   if (typeof fn !== 'function') {
-    toast.warn('该操作当前不可用', {
+    toast.warn(t('该操作当前不可用'), {
       text: name === 'start-convert'
         ? '请先切换到转换视图并选择文件与目标格式。'
         : `没有视图注册动作「${name}」。`,
@@ -896,7 +910,7 @@ function buildCommands() {
   for (const item of NAV_ITEMS) {
     commands.push({
       id: `view:${item.id}`,
-      group: '前往',
+      group: t('前往'),
       title: item.label,
       subtitle: item.hash,
       kbd: shortcut(item.shortcut),
@@ -906,44 +920,44 @@ function buildCommands() {
   }
 
   commands.push({
-    id: 'act:pick-files', group: '操作', title: '添加文件', subtitle: '选择文件加入待转换列表',
+    id: 'act:pick-files', group: '操作', title: t('添加文件'), subtitle: t('选择文件加入待转换列表'),
     kbd: shortcut('mod+O'), keywords: 'add file open', run: () => pickFiles(),
   });
   commands.push({
-    id: 'act:pick-folder', group: '操作', title: '添加目录', subtitle: '递归展开目录并加入待转换列表',
+    id: 'act:pick-folder', group: '操作', title: t('添加目录'), subtitle: t('递归展开目录并加入待转换列表'),
     kbd: shortcut('mod+Shift+O'), keywords: 'add folder directory', run: () => pickFolder(),
   });
   commands.push({
-    id: 'act:start', group: '操作', title: '开始转换', subtitle: '把当前待转换列表提交到队列',
+    id: 'act:start', group: '操作', title: t('开始转换'), subtitle: t('把当前待转换列表提交到队列'),
     kbd: shortcut('mod+Enter'), keywords: 'start convert run', run: () => runAction('start-convert'),
   });
   commands.push({
-    id: 'act:clear-pending', group: '操作', title: '清空待转换列表', subtitle: '不移除磁盘上的文件',
+    id: 'act:clear-pending', group: '操作', title: t('清空待转换列表'), subtitle: t('不移除磁盘上的文件'),
     keywords: 'clear pending list', run: () => clearPending(),
   });
   commands.push({
-    id: 'act:advanced', group: '操作', title: '打开高级面板', subtitle: '内核参数 / 输出目录 / 命令行预览',
+    id: 'act:advanced', group: '操作', title: t('打开高级面板'), subtitle: t('内核参数 / 输出目录 / 命令行预览'),
     keywords: 'advanced sheet params', run: () => navigate('#/convert', { name: 'open-advanced' }),
   });
   commands.push({
-    id: 'act:refresh', group: '操作', title: '刷新内核', subtitle: '重新扫描并重新探测依赖',
+    id: 'act:refresh', group: '操作', title: t('刷新内核'), subtitle: t('重新扫描并重新探测依赖'),
     kbd: 'F5', keywords: 'refresh rescan kernel', run: () => refreshKernels(),
   });
   commands.push({
     id: 'act:theme', group: '操作',
     title: `切换到${(state.pick('settings') || {}).theme === 'dark' ? '浅色' : '深色'}主题`,
-    subtitle: '主题会写入设置并持久化', keywords: 'theme dark light 主题', run: () => toggleTheme(),
+    subtitle: t('主题会写入设置并持久化'), keywords: 'theme dark light 主题', run: () => toggleTheme(),
   });
   commands.push({
-    id: 'act:output-dir', group: '操作', title: '打开最近输出目录', subtitle: state.pick('lastOutputDir') || '尚未设置',
+    id: 'act:output-dir', group: '操作', title: t('打开最近输出目录'), subtitle: state.pick('lastOutputDir') || '尚未设置',
     keywords: 'output dir open', run: () => openPathSafe(state.pick('lastOutputDir'), '最近输出目录'),
   });
   commands.push({
-    id: 'act:hub-root', group: '操作', title: '打开内核仓库目录', subtitle: (state.pick('layout') || {}).hubRoot || '',
+    id: 'act:hub-root', group: '操作', title: t('打开内核仓库目录'), subtitle: (state.pick('layout') || {}).hubRoot || '',
     keywords: 'hub root kernel dir', run: () => openPathSafe((state.pick('layout') || {}).hubRoot, '内核仓库'),
   });
   commands.push({
-    id: 'act:doctor', group: '操作', title: '运行自检并查看结果', subtitle: 'Node / Electron / Python / 内核探测摘要',
+    id: 'act:doctor', group: '操作', title: t('运行自检并查看结果'), subtitle: t('Node / Electron / Python / 内核探测摘要'),
     keywords: 'doctor diagnose health',
     run: async () => {
       try {
@@ -955,7 +969,7 @@ function buildCommands() {
     },
   });
   commands.push({
-    id: 'act:clear-logs', group: '操作', title: '清空运行日志', subtitle: '同时清理主进程日志缓冲',
+    id: 'act:clear-logs', group: '操作', title: t('清空运行日志'), subtitle: t('同时清理主进程日志缓冲'),
     keywords: 'clear log', run: () => clearLogs(),
   });
 
@@ -1017,7 +1031,7 @@ async function clearLogs() {
   try {
     await bridge.logs.clear();
     replaceLogs([]);
-    toast.success('日志已清空');
+    toast.success(t('日志已清空'));
   } catch (err) {
     reportError('清空日志失败', wrapError(err));
   }
@@ -1137,11 +1151,11 @@ function installTestHooks() {
      */
     toastProbe() {
       toast.clear();
-      toast.success('第一条成功');
+      toast.success(t('第一条成功'));
       const afterOne = toast.counts();
-      toast.success('第二条成功');
+      toast.success(t('第二条成功'));
       const afterSame = toast.counts();
-      toast.error('一条错误');
+      toast.error(t('一条错误'));
       const afterDiff = toast.counts();
       return { afterOne, afterSame, afterDiff, total: toast.count() };
     },
@@ -1285,6 +1299,23 @@ function installTestHooks() {
       };
     },
 
+    /** i18n 状态（自检用）：当前语言、词典条目数、导航标签 */
+    i18nInfo() {
+      return {
+        locale: getLocale(),
+        entries: translationCount(),
+        hasConvert: hasTranslation('转换'),
+        navLabel: (NAV_ITEMS[0] || {}).label || '',
+        docLang: document.documentElement.getAttribute('lang') || '',
+      };
+    },
+
+    /** 当前视图里可见的文本（自检用：验证中文路径在界面上不被截断/乱码） */
+    viewText() {
+      const view = document.querySelector('#view');
+      return view ? view.innerText.replace(/\s+/g, ' ').trim().slice(0, 600) : '';
+    },
+
     /** 路由跳转并等待视图挂载完成 */
     async goto(hash) {
       const target = String(hash || '#/convert');
@@ -1382,7 +1413,7 @@ window.addEventListener('unhandledrejection', (event) => {
   const message = reason && reason.message ? reason.message : String(reason);
   uiErrors.push(`unhandledrejection: ${message}`);
   console.warn('[ui] unhandledrejection', reason);
-  toast.error('未处理的异步错误', { text: message });
+  toast.error(t('未处理的异步错误'), { text: message });
 });
 window.addEventListener('error', (event) => {
   uiErrors.push(`error: ${event.message}`);
@@ -1400,7 +1431,7 @@ main().catch((err) => {
       h('div.error-state', null,
         icon('error', { size: 16 }),
         h('div.error-state__msg', { textContent: `应用启动失败：${err && err.message ? err.message : String(err)}` }),
-        h('button.linkbtn', { type: 'button', on: { click: () => location.reload() } }, h('span', { textContent: '重新加载' }))
+        h('button.linkbtn', { type: 'button', on: { click: () => location.reload() } }, h('span', { textContent: t('重新加载') }))
       )
     ));
   }

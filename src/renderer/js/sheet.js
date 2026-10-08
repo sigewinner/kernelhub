@@ -10,13 +10,14 @@
  *   · 抽屉挂在视图内部（离开视图时随视图一起销毁），但用 fixed 定位浮在内容之上
  *
  * 用法：
- *   const sheet = createSheet(host, { id: 'convert-advanced', title: '高级', subtitle: '…' });
+ *   const sheet = createSheet(host, { id: 'convert-advanced', title: t('高级'), subtitle: '…' });
  *   sheet.body.appendChild(...);        // 内容随视图一起构建（隐藏时也在 DOM 里）
  *   sheet.foot.appendChild(...);
  *   sheet.open(); sheet.close(); sheet.toggle(); sheet.isOpen();
  */
 
 import { h, on } from './dom.js';
+import { t } from './i18n.js';
 
 export function createSheet(host, opts = {}) {
   const disposers = [];
@@ -26,9 +27,9 @@ export function createSheet(host, opts = {}) {
   const subEl = h('div.sheet__sub', { textContent: opts.subtitle || '' });
   const closeBtn = h('button.btn.btn--quiet', {
     type: 'button',
-    title: '关闭高级面板（Esc）',
+    title: t('关闭高级面板（Esc）'),
     on: { click: () => close() },
-  }, h('span', { textContent: '关闭' }));
+  }, h('span', { textContent: t('关闭') }));
 
   const body = h('div.sheet__body');
   const foot = h('div.sheet__foot');

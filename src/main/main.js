@@ -1505,6 +1505,42 @@ async function runSelfTest() {
         upd ? `当前=${upd.current} 同大版本最新=${upd.latest} 有更新=${Boolean(upd.hasUpdate)}${upd.error ? ` 错误=${upd.error}` : ''}` : '取不到检测结果'
       );
 
+      /* ---- 2.2.1：界面语言与中文路径 ---- */
+
+      const i18nInfo = await js(`window.__khsTest.i18nInfo()`);
+      step(
+        '界面语言机制就绪（词典已装载）',
+        Boolean(i18nInfo && i18nInfo.entries >= 250 && i18nInfo.hasConvert),
+        i18nInfo
+          ? `语言=${i18nInfo.locale} 词条=${i18nInfo.entries} 导航首项=「${i18nInfo.navLabel}」 html[lang]=${i18nInfo.docLang}`
+          : '取不到 i18n 状态'
+      );
+
+      // 中文路径：主进程造一个中文目录 + 中文文件名，交给渲染层加入待转换列表，
+      // 再回读界面文本，确认没有乱码 / 没有被截断（这是引擎测试覆盖不到的一层）
+      try {
+        const fxDir = path.join(resolveStateDir(), 'selftest-fixtures');
+        const { makeFixtures } = require('../shared/fixtures');
+        const fx = makeFixtures(fxDir, { hubRoot: registry.hubRoot, python: registry.python });
+        const pngFixture = fx.find((f) => f.toLowerCase().endsWith('.png'));
+        const cnDir = path.join(fxDir, '中文目录 测试');
+        fs.mkdirSync(cnDir, { recursive: true });
+        const cnFile = path.join(cnDir, '中文 文件 名.png');
+        if (pngFixture) fs.copyFileSync(pngFixture, cnFile);
+        await js(`window.__khsTest ? window.__khsTest.goto('#/convert') : null`);
+        await settle(900);
+        await js(`window.__khsTest.addPaths([${JSON.stringify(cnFile)}])`);
+        await settle(900);
+        const cnText = await js(`window.__khsTest.viewText()`);
+        step(
+          '中文路径文件能加入列表并在界面正常显示',
+          Boolean(cnText && cnText.includes('中文 文件 名') && !cnText.includes('\uFFFD')),
+          cnText ? cnText.slice(0, 90) : '取不到界面文本'
+        );
+      } catch (err) {
+        step('中文路径文件能加入列表并在界面正常显示', false, String(err.message || err));
+      }
+
       // 回到插件页并切回「可安装」标签：后面的目录渲染断言依赖它
       await js(`window.__khsTest ? window.__khsTest.goto('#/plugins') : null`);
       await settle(1200);

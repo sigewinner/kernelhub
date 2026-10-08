@@ -464,10 +464,18 @@ class PluginStore {
     return path.join(this.tmpDir, `install-${id}-${process.pid}-${Date.now().toString(36)}`);
   }
 
-  /** 额外的 git -c 参数（企业代理 / 自定义 TLS 后端等），来自设置 */
+  /**
+   * 额外的 git -c 参数（企业代理 / 自定义 TLS 后端等），来自设置。
+   *
+   * 2.2.1 起固定加上两条与**编码**有关的配置：
+   *   · core.quotepath=false —— git 默认把非 ASCII 路径转义成八进制
+   *     （`"\346\226\207..."`）。任何把 git 输出当路径用的地方都会因此拿到垃圾，
+   *     插件仓库里一旦有中文文件名就会踩到。
+   *   · i18n.logOutputEncoding=utf-8 —— 提交信息/日志按 UTF-8 输出。
+   */
   _gitConfigArgs() {
     const raw = (this.settings && this.settings.get('pluginGitConfig', [])) || [];
-    const out = [];
+    const out = ['-c', 'core.quotepath=false', '-c', 'i18n.logOutputEncoding=utf-8'];
     for (const item of Array.isArray(raw) ? raw : []) {
       const s = String(item || '').trim();
       if (s) out.push('-c', s);

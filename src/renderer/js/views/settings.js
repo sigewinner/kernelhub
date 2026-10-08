@@ -13,6 +13,7 @@
 import { h, clear, on, copyText, iconAction } from '../dom.js';
 import { icon } from '../icons.js';
 import { thousands, platformLabel, prettyJson, orDash } from '../format.js';
+import { t, LOCALES, initLocale } from '../i18n.js';
 
 /** 字节 → 人类可读（设置页自己用，避免跨视图 import） */
 function humanBytes(bytes) {
@@ -23,12 +24,12 @@ function humanBytes(bytes) {
 }
 
 const CATEGORIES = [
-  { id: 'appearance', label: '外观' },
-  { id: 'language', label: '语言与区域' },
-  { id: 'kernels', label: '插件与内核' },
-  { id: 'queue', label: '队列与性能' },
-  { id: 'paths', label: '路径' },
-  { id: 'about', label: '关于' },
+  { id: 'appearance', label: t('外观') },
+  { id: 'language', label: t('语言与区域') },
+  { id: 'kernels', label: t('插件与内核') },
+  { id: 'queue', label: t('队列与性能') },
+  { id: 'paths', label: t('路径') },
+  { id: 'about', label: t('关于') },
 ];
 
 export async function mount(host, ctx) {
@@ -55,7 +56,7 @@ export async function mount(host, ctx) {
 
   const wrap = h('div.view-inner', { dataset: { view: 'settings' } },
     h('div.view-head', null,
-      h('h1.view-title', { textContent: '设置' }),
+      h('h1.view-title', { textContent: t('设置') }),
       h('div.view-rule')
     ),
     h('div.settings-grid', null, navEl, paneEl)
@@ -90,8 +91,8 @@ export async function mount(host, ctx) {
       children: [icon('copy', { size: 14 })],
       onClick: async () => {
         const ok = await copyText(String(text || ''));
-        if (ok) ctx.toast.success('已复制');
-        else ctx.toast.warn('复制失败', '当前环境不允许访问剪贴板');
+        if (ok) ctx.toast.success(t('已复制'));
+        else ctx.toast.warn(t('复制失败'), '当前环境不允许访问剪贴板');
       },
     });
   }
@@ -225,22 +226,22 @@ export async function mount(host, ctx) {
       return h('label.radio', null, input, h('span', { textContent: label }), note ? h('span.dim', { textContent: note }) : null);
     };
 
-    paneEl.appendChild(group('主题',
+    paneEl.appendChild(group(t('主题'),
       h('div.radiolist', null,
-        makeRadio('light', '浅色'),
-        makeRadio('dark', '深色')
+        makeRadio('light', t('浅色')),
+        makeRadio('dark', t('深色'))
       ),
       h('div.field__hint', {
-        textContent: '界面采用瑞士风格（International Typographic Style）：网格、无衬线字、左对齐、大量留白，只用黑白灰加一个红点。浅色是默认主题，深色用于夜间或投影环境。',
+        textContent: t('界面采用瑞士风格（International Typographic Style）：网格、无衬线字、左对齐、大量留白，只用黑白灰加一个红点。浅色是默认主题，深色用于夜间或投影环境。'),
       }),
       h('div.field__hint', {
-        textContent: '主题写入设置并持久化，顶栏右侧的图标按钮可以在任何视图里快速切换。',
+        textContent: t('主题写入设置并持久化，顶栏右侧的图标按钮可以在任何视图里快速切换。'),
       })
     ));
 
-    paneEl.appendChild(group('界面约定',
+    paneEl.appendChild(group(t('界面约定'),
       h('div.field__hint', {
-        textContent: '每屏可见按钮不超过 10 个：详细配置都收在「高级」抽屉里。表格行末的图标操作、字段里的浏览按钮不算按钮数量。',
+        textContent: t('每屏可见按钮不超过 10 个：详细配置都收在「高级」抽屉里。表格行末的图标操作、字段里的浏览按钮不算按钮数量。'),
       })
     ));
   }
@@ -248,16 +249,33 @@ export async function mount(host, ctx) {
   /* -------------------------------------------------------- 语言与区域 */
 
   function renderLanguage(settings) {
-    paneEl.appendChild(group('语言',
-      field('界面语言', h('input.input', { type: 'text', value: '简体中文', readonly: true, disabled: true }),
-        '当前版本只提供简体中文界面，语言字段来自设置的 locale。'),
-      readOnlyRow('设置值', settings.locale || 'zh-CN')
+    // 2.2.1：语言可切换。切换后重载界面 —— 让所有模块按新语言重新构建，
+    // 比逐个重渲染安全得多（模块顶层就有 t() 调用，见 i18n.js 的说明）。
+    const localeSelect = h('select.select', { 'aria-label': t('界面语言') });
+    for (const item of LOCALES) {
+      localeSelect.appendChild(h('option', {
+        value: item.id,
+        textContent: item.label,
+        selected: (settings.locale || 'zh-CN') === item.id,
+      }));
+    }
+    localeSelect.addEventListener('change', async () => {
+      const next = localeSelect.value;
+      await save({ locale: next }, next === 'en-US' ? 'Language switched to English' : '已切换为简体中文');
+      initLocale(next);
+      location.reload();
+    });
+
+    paneEl.appendChild(group(t('语言'),
+      field(t('界面语言'), localeSelect,
+        t('切换后界面会重新加载。当前已英文化的范围：导航、顶栏、状态栏、命令面板、通知与设置页；各视图正文将在后续版本补齐。')),
+      readOnlyRow(t('设置值'), settings.locale || 'zh-CN')
     ));
 
-    paneEl.appendChild(group('数字与时间格式',
-      h('div.field__hint', { textContent: '数字使用千分位分组；表格中的数字右对齐并启用等宽数字（tabular-nums）。' }),
-      h('div.field__hint', { textContent: '时间使用 24 小时制，完整格式为 YYYY-MM-DD HH:MM:SS，日志中只显示 HH:MM:SS。' }),
-      h('div.field__hint', { textContent: '文件体积按 1024 进制换算（B / KB / MB / GB / TB）。' })
+    paneEl.appendChild(group(t('数字与时间格式'),
+      h('div.field__hint', { textContent: t('数字使用千分位分组；表格中的数字右对齐并启用等宽数字（tabular-nums）。') }),
+      h('div.field__hint', { textContent: t('时间使用 24 小时制，完整格式为 YYYY-MM-DD HH:MM:SS，日志中只显示 HH:MM:SS。') }),
+      h('div.field__hint', { textContent: t('文件体积按 1024 进制换算（B / KB / MB / GB / TB）。') })
     ));
   }
 
@@ -270,15 +288,15 @@ export async function mount(host, ctx) {
 
     const addBtn = h('button.btn', {
       type: 'button',
-      title: '添加一个额外的内核插件目录',
+      title: t('添加一个额外的内核插件目录'),
       on: {
         click: async () => {
           try {
-            const res = await window.khs.fs.pickFolder({ title: '选择额外的插件目录' });
+            const res = await window.khs.fs.pickFolder({ title: t('选择额外的插件目录') });
             if (!res || !res.folder) return;
             const folder = String(res.folder);
             if (extraDirs.includes(folder)) {
-              ctx.toast.info('该目录已经在列表里');
+              ctx.toast.info(t('该目录已经在列表里'));
               return;
             }
             await save({ extraPluginDirs: extraDirs.concat([folder]) }, '插件目录已添加');
@@ -288,14 +306,14 @@ export async function mount(host, ctx) {
           }
         },
       },
-    }, h('span', { textContent: '添加目录' }));
+    }, h('span', { textContent: t('添加目录') }));
 
     const dirRows = extraDirs.length
       ? extraDirs.map((dir) => h('div.pathline', null,
         h('span.pathline__value', { textContent: dir, title: dir }),
         iconAction({
           classes: ['iconbtn'],
-          label: '移除该目录',
+          label: t('移除该目录'),
           children: [icon('close', { size: 14 })],
           onClick: async () => {
             await save({ extraPluginDirs: extraDirs.filter((d) => d !== dir) }, '插件目录已移除');
@@ -303,26 +321,26 @@ export async function mount(host, ctx) {
           },
         })
       ))
-      : [h('div.field__hint', { textContent: '还没有额外插件目录。' })];
+      : [h('div.field__hint', { textContent: t('还没有额外插件目录。') })];
 
     const autoScan = h('input.check', { type: 'checkbox', checked: settings.autoScan !== false });
     autoScan.addEventListener('change', () => save({ autoScan: autoScan.checked }, autoScan.checked ? '启动时自动扫描已开启' : '启动时自动扫描已关闭'));
 
-    paneEl.appendChild(group('内核仓库',
+    paneEl.appendChild(group(t('内核仓库'),
       h('div.pathline', null,
         h('span.pathline__value', { textContent: orDash(layout.hubRoot), title: String(layout.hubRoot || '') }),
         iconCopy(layout.hubRoot, '复制内核仓库目录'),
         iconAction({
           classes: ['iconbtn'],
-          label: '在资源管理器中打开内核仓库目录',
+          label: t('在资源管理器中打开内核仓库目录'),
           children: [icon('folderOpen', { size: 14 })],
           onClick: () => ctx.openPathSafe(layout.hubRoot, '内核仓库'),
         })
       ),
-      h('div.field__hint', { textContent: '该目录由主进程在启动时探测得到（也可以由环境变量指定），界面上是只读的。' })
+      h('div.field__hint', { textContent: t('该目录由主进程在启动时探测得到（也可以由环境变量指定），界面上是只读的。') })
     ));
 
-    paneEl.appendChild(group('额外插件目录',
+    paneEl.appendChild(group(t('额外插件目录'),
       ...dirRows,
       h('div.row.gap-2', null, addBtn)
     ));
@@ -337,28 +355,28 @@ export async function mount(host, ctx) {
     pipIndexInput.addEventListener('change', () =>
       save({ pipIndexUrl: pipIndexInput.value.trim() }, '已保存 pip 源')
     );
-    paneEl.appendChild(group('依赖安装',
+    paneEl.appendChild(group(t('依赖安装'),
       h('div.field', null,
-        h('label.label', { textContent: 'pip 源' }),
+        h('label.label', { textContent: t('pip 源') }),
         pipIndexInput
       ),
       h('div.field__hint', {
-        textContent: '插件缺 Python 依赖时的自动安装源（默认清华镜像）。装不上会自动回退到 PyPI 官方源。',
+        textContent: t('插件缺 Python 依赖时的自动安装源（默认清华镜像）。装不上会自动回退到 PyPI 官方源。'),
       })
     ));
 
-    paneEl.appendChild(group('扫描',
-      h('label.check-row', null, autoScan, h('span', { textContent: '启动时自动扫描内核' })),
-      h('div.field__hint', { textContent: '关闭后启动不会重新探测依赖，需要在「插件 → 已安装」里手动点「重新扫描」。' }),
+    paneEl.appendChild(group(t('扫描'),
+      h('label.check-row', null, autoScan, h('span', { textContent: t('启动时自动扫描内核') })),
+      h('div.field__hint', { textContent: t('关闭后启动不会重新探测依赖，需要在「插件 → 已安装」里手动点「重新扫描」。') }),
       h('div.pathline', null,
-        h('span.dim', { style: { minWidth: '104px' }, textContent: '已停用内核' }),
+        h('span.dim', { style: { minWidth: '104px' }, textContent: t('已停用内核') }),
         h('span.pathline__value', { textContent: `${disabled.length} 个` }),
-        h('a.linkbtn', { href: '#/plugins', textContent: '前往插件页管理' })
+        h('a.linkbtn', { href: '#/plugins', textContent: t('前往插件页管理') })
       )
     ));
 
     if (Array.isArray(layout.searchPaths) && layout.searchPaths.length) {
-      paneEl.appendChild(group('搜索路径',
+      paneEl.appendChild(group(t('搜索路径'),
         ...layout.searchPaths.map((p) => h('div.pathline', null,
           h('span.pathline__value', { textContent: String(p), title: String(p) }),
           iconCopy(p, '复制搜索路径')
@@ -409,20 +427,20 @@ export async function mount(host, ctx) {
       save({ timeoutMs: ms }, '单次调用超时已保存');
     });
 
-    paneEl.appendChild(group('并发',
-      field('并发上限（1–8）', h('div.num-row', null, slider, parallelValue),
+    paneEl.appendChild(group(t('并发'),
+      field(t('并发上限（1–8）'), h('div.num-row', null, slider, parallelValue),
         '队列同时执行的作业数量；改小可以减轻机器压力，改大可以更快跑完批量任务。')
     ));
 
-    paneEl.appendChild(group('超时',
-      field('单次调用超时（毫秒）', timeoutInput,
+    paneEl.appendChild(group(t('超时'),
+      field(t('单次调用超时（毫秒）'), timeoutInput,
         '单个内核调用超过该时长会被判定为失败；下方显示换算后的秒数。'),
       secondsHint
     ));
 
-    paneEl.appendChild(group('日志缓冲',
+    paneEl.appendChild(group(t('日志缓冲'),
       readOnlyRow('最多保留', `${thousands(Number(settings.keepLogLines) || 4000)} 行`),
-      h('div.field__hint', { textContent: '日志超过上限后会丢弃最早的行；日志页可以手动清空。' })
+      h('div.field__hint', { textContent: t('日志超过上限后会丢弃最早的行；日志页可以手动清空。') })
     ));
   }
 
@@ -432,12 +450,12 @@ export async function mount(host, ctx) {
     const layout = vs.layout || store.pick('layout') || {};
     const info = vs.info || store.pick('info') || {};
 
-    paneEl.appendChild(group('应用路径',
+    paneEl.appendChild(group(t('应用路径'),
       pathLine('状态目录（设置、缓存与日志）', info.stateDir),
       pathLine('运行目录（临时作业文件）', layout.runDir)
     ));
 
-    paneEl.appendChild(group('内核与协议路径',
+    paneEl.appendChild(group(t('内核与协议路径'),
       pathLine('内核仓库目录', layout.hubRoot),
       pathLine('插件目录', layout.pluginsDir),
       pathLine('内置内核目录', layout.vendorDir),
@@ -447,11 +465,11 @@ export async function mount(host, ctx) {
     paneEl.appendChild(group('Python',
       pathLine('解释器', layout.python),
       readOnlyRow('版本', layout.pythonVersion || '—'),
-      h('div.field__hint', { textContent: 'Python 由主进程在启动时探测，内核适配器以它为运行时。' })
+      h('div.field__hint', { textContent: t('Python 由主进程在启动时探测，内核适配器以它为运行时。') })
     ));
 
     if (Array.isArray(layout.sysPath) && layout.sysPath.length) {
-      paneEl.appendChild(group('运行时搜索路径',
+      paneEl.appendChild(group(t('运行时搜索路径'),
         ...layout.sysPath.slice(0, 12).map((p) => h('div.pathline', null,
           h('span.pathline__value', { textContent: String(p), title: String(p) }),
           iconCopy(p, '复制搜索路径')
@@ -470,20 +488,20 @@ export async function mount(host, ctx) {
     const state = vs.updateState;
     const checkBtn = h('button.btn', {
       type: 'button',
-      title: '到 GitHub Release 上找工作目录大版本里最新的版本',
+      title: t('到 GitHub Release 上找工作目录大版本里最新的版本'),
       on: { click: () => checkUpdate() },
     }, h('span', { textContent: state && state.checking ? '检测中…' : '检测更新' }));
 
     const rows = [
-      h('div.kv__k', { textContent: '当前版本' }),
+      h('div.kv__k', { textContent: t('当前版本') }),
       h('div.kv__v.mono', { textContent: orDash(info.version) }),
     ];
 
     let status = null;
     if (!state) {
-      status = h('div.field__hint', { textContent: '点「检测更新」到 GitHub 上查看同大版本是否有新版本。' });
+      status = h('div.field__hint', { textContent: t('点「检测更新」到 GitHub 上查看同大版本是否有新版本。') });
     } else if (state.checking) {
-      status = h('div.field__hint', { textContent: '正在查询 GitHub Release…' });
+      status = h('div.field__hint', { textContent: t('正在查询 GitHub Release…') });
     } else if (!state.ok) {
       status = h('div.strip.strip--warn', null, h('span', { textContent: `检测失败：${state.error}` }));
     } else if (!state.hasUpdate) {
@@ -495,26 +513,26 @@ export async function mount(host, ctx) {
     const actions = [checkBtn];
 
     if (state && state.ok && state.hasUpdate) {
-      rows.push(h('div.kv__k', { textContent: '最新版本' }), h('div.kv__v.mono.accent', { textContent: state.latest }));
+      rows.push(h('div.kv__k', { textContent: t('最新版本') }), h('div.kv__v.mono.accent', { textContent: state.latest }));
       if (state.asset) {
         rows.push(
-          h('div.kv__k', { textContent: '安装包' }),
+          h('div.kv__k', { textContent: t('安装包') }),
           h('div.kv__v.mono', { textContent: `${state.asset.name}　${humanBytes(state.asset.size)}` })
         );
       }
       const downBtn = h('button.btn.btn--primary', {
         type: 'button',
-        title: '下载安装包并启动安装向导',
+        title: t('下载安装包并启动安装向导'),
         on: { click: () => downloadUpdate() },
-      }, h('span', { textContent: '下载并启动安装' }));
+      }, h('span', { textContent: t('下载并启动安装') }));
       actions.push(downBtn);
 
       if (state.url) {
         actions.push(h('button.btn', {
           type: 'button',
-          title: '在浏览器里打开 Release 页面',
+          title: t('在浏览器里打开 Release 页面'),
           on: { click: () => window.khs.update.openRelease(state.url) },
-        }, h('span', { textContent: '查看更新说明' })));
+        }, h('span', { textContent: t('查看更新说明') })));
       }
 
       status = h('div.strip.strip--warn', null,
@@ -528,7 +546,7 @@ export async function mount(host, ctx) {
       actions.push(h('span.mono.dim', { textContent: vs.updateProgress }));
     }
 
-    paneEl.appendChild(group('更新',
+    paneEl.appendChild(group(t('更新'),
       h('div.kv', null, ...rows),
       status,
       h('div.row.gap-2', null, ...actions),
@@ -589,26 +607,26 @@ export async function mount(host, ctx) {
 
   function renderAbout(settings) {
     const info = vs.info || store.pick('info') || {};
-    paneEl.appendChild(group('版本',
+    paneEl.appendChild(group(t('版本'),
       h('div.kv', null,
-        h('div.kv__k', { textContent: '应用版本' }), h('div.kv__v.mono', { textContent: orDash(info.version) }),
-        h('div.kv__k', { textContent: '协议版本' }), h('div.kv__v.mono', { textContent: info.ckp ? `CKP ${info.ckp}` : '—' }),
-        h('div.kv__k', { textContent: '设置结构' }), h('div.kv__v.mono', { textContent: String(orDash(settings.version)) }),
+        h('div.kv__k', { textContent: t('应用版本') }), h('div.kv__v.mono', { textContent: orDash(info.version) }),
+        h('div.kv__k', { textContent: t('协议版本') }), h('div.kv__v.mono', { textContent: info.ckp ? `CKP ${info.ckp}` : '—' }),
+        h('div.kv__k', { textContent: t('设置结构') }), h('div.kv__v.mono', { textContent: String(orDash(settings.version)) }),
         h('div.kv__k', { textContent: 'Electron' }), h('div.kv__v.mono', { textContent: orDash(info.electron) }),
         h('div.kv__k', { textContent: 'Chromium' }), h('div.kv__v.mono', { textContent: orDash(info.chrome) }),
         h('div.kv__k', { textContent: 'Node' }), h('div.kv__v.mono', { textContent: orDash(info.node) }),
-        h('div.kv__k', { textContent: '平台' }), h('div.kv__v', { textContent: `${platformLabel(info.platform)} · ${orDash(info.arch)}` }),
-        h('div.kv__k', { textContent: '开发模式' }), h('div.kv__v', { textContent: info.dev ? '是' : '否' })
+        h('div.kv__k', { textContent: t('平台') }), h('div.kv__v', { textContent: `${platformLabel(info.platform)} · ${orDash(info.arch)}` }),
+        h('div.kv__k', { textContent: t('开发模式') }), h('div.kv__v', { textContent: info.dev ? '是' : '否' })
       )
     ));
 
     renderUpdateGroup(info);
 
     if (vs.doctorError) {
-      paneEl.appendChild(group('自检',
+      paneEl.appendChild(group(t('自检'),
         h('div.error-state', null,
           h('div.error-state__msg', { textContent: vs.doctorError }),
-          h('button.linkbtn', { type: 'button', on: { click: () => loadDoctor() } }, h('span', { textContent: '重试' }))
+          h('button.linkbtn', { type: 'button', on: { click: () => loadDoctor() } }, h('span', { textContent: t('重试') }))
         )
       ));
       return;
@@ -616,7 +634,7 @@ export async function mount(host, ctx) {
 
     const doctor = vs.doctor;
     if (!doctor) {
-      paneEl.appendChild(group('自检',
+      paneEl.appendChild(group(t('自检'),
         h('div.skeleton', { style: { width: '100%' } }),
         h('div.skeleton', { style: { width: '60%', marginTop: 'var(--sp-2)' } })
       ));
@@ -627,11 +645,11 @@ export async function mount(host, ctx) {
     const ready = kernels.filter((k) => k.status === 'ready').length;
     const broken = kernels.filter((k) => k.status !== 'ready');
 
-    paneEl.appendChild(group('自检结果',
+    paneEl.appendChild(group(t('自检结果'),
       h('div.kv', null,
-        h('div.kv__k', { textContent: 'Node（自检）' }), h('div.kv__v.mono', { textContent: orDash(doctor.node) }),
+        h('div.kv__k', { textContent: t('Node（自检）') }), h('div.kv__v.mono', { textContent: orDash(doctor.node) }),
         h('div.kv__k', { textContent: 'Python' }), h('div.kv__v.mono', { textContent: orDash((doctor.layout || {}).pythonVersion) }),
-        h('div.kv__k', { textContent: '可用内核' }), h('div.kv__v.mono', { textContent: `${ready} / ${kernels.length}` })
+        h('div.kv__k', { textContent: t('可用内核') }), h('div.kv__v.mono', { textContent: `${ready} / ${kernels.length}` })
       )
     ));
 
@@ -644,7 +662,7 @@ export async function mount(host, ctx) {
           h('td', { class: 'truncate', textContent: orDash(k.installHint) })
         ));
       }
-      paneEl.appendChild(group('需要处理的内核',
+      paneEl.appendChild(group(t('需要处理的内核'),
         h('table.table', null,
           h('colgroup', null,
             h('col', { style: { width: '30%' } }),
@@ -652,31 +670,31 @@ export async function mount(host, ctx) {
             h('col', { style: { width: '56%' } })
           ),
           h('thead', null, h('tr', null,
-            h('th', { textContent: '内核' }),
-            h('th', { textContent: '状态' }),
-            h('th', { textContent: '安装提示' })
+            h('th', { textContent: t('内核') }),
+            h('th', { textContent: t('状态') }),
+            h('th', { textContent: t('安装提示') })
           )),
           body
         )
       ));
     } else {
-      paneEl.appendChild(group('需要处理的内核',
-        h('div.field__hint', { textContent: '全部内核都可用，没有需要补齐的依赖。' })
+      paneEl.appendChild(group(t('需要处理的内核'),
+        h('div.field__hint', { textContent: t('全部内核都可用，没有需要补齐的依赖。') })
       ));
     }
 
-    paneEl.appendChild(group('原始自检数据',
+    paneEl.appendChild(group(t('原始自检数据'),
       h('div.codeblock.codeblock--wrap', null,
         h('div.codeblock__bar', null,
-          h('span', { textContent: 'doctor() 返回值（截断展示）' }),
+          h('span', { textContent: t('doctor() 返回值（截断展示）') }),
           iconAction({
             classes: ['textbtn'],
-            label: '复制自检报告',
-            children: [h('span', { textContent: '复制' })],
+            label: t('复制自检报告'),
+            children: [h('span', { textContent: t('复制') })],
             onClick: async () => {
               const ok = await copyText(prettyJson(doctor, ''));
-              if (ok) ctx.toast.success('自检报告已复制');
-              else ctx.toast.warn('复制失败', '当前环境不允许访问剪贴板');
+              if (ok) ctx.toast.success(t('自检报告已复制'));
+              else ctx.toast.warn(t('复制失败'), '当前环境不允许访问剪贴板');
             },
           })
         ),
