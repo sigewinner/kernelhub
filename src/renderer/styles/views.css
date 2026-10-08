@@ -200,26 +200,27 @@
 }
 
 /**
- * 任务摘要（2.2.4 起居中）。
- * 「目标格式 / 将使用 / 输出」这三行右栏信息原来左对齐贴着边，
- * 现在整块居中：键右对齐、值左对齐，中间是对齐轴，三行的值起点在同一条竖线上。
+ * 任务摘要（2.2.6：改回**左对齐**）。
+ *
+ * 2.2.4 曾把它整块居中，但摘要是一组「键 — 值」的清单：
+ * 左对齐时键与值的两条竖线各自成列，扫读最快；居中反而让每行的起点都不一样。
+ * 所以这里只保留列对齐，不再居中。空状态/表格那些「一句话」的地方仍然居中。
  */
 .summary-list {
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
-  align-items: center;
+  align-items: stretch;
 }
 
 .summary-line {
   display: flex;
   align-items: baseline;
-  justify-content: center;
+  justify-content: flex-start;
   gap: var(--sp-3);
   font-size: var(--fs-13);
   width: 100%;
-  max-width: 42rem;
-  text-align: center;
+  text-align: left;
 }
 
 .summary-line__k {
@@ -227,7 +228,7 @@
   min-width: 72px;
   font-size: var(--fs-12);
   color: var(--c-ink-3);
-  text-align: right;
+  text-align: right; /* 键右对齐，值的起点因此在同一条竖线上 */
 }
 
 .summary-line__v {
@@ -254,9 +255,10 @@
   min-width: 0;
 }
 
-/* 摘要里的复选框单独一行，居中 */
+/* 摘要里的复选框：与「值」那一列对齐（缩进一个键列宽 + 间距），而不是浮在中间 */
 .summary-line--check {
-  justify-content: center;
+  justify-content: flex-start;
+  padding-left: calc(72px + var(--sp-3));
 }
 
 /* ================================================================= 队列 */

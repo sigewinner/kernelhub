@@ -1,7 +1,7 @@
 {
   "name": "kernelhub-studio",
   "productName": "KernelHub Studio",
-  "version": "2.2.5",
+  "version": "2.2.6",
   "description": "CKP 协议驱动的现代文件格式转换工作台（Electron + Node.js）——壳 + 按需插件",
   "main": "src/main/main.js",
   "type": "commonjs",

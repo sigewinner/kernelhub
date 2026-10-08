@@ -1881,6 +1881,35 @@ async function runSelfTest() {
           : '取不到输出目录位置'
       );
 
+      // 2.2.6：摘要改回左对齐（键右对齐、值左对齐，两列各自成一条竖线）
+      const summaryAlign = await js(`(() => {
+        const list = document.querySelector('#view .summary-list');
+        const line = document.querySelector('#view .summary-line');
+        if (!list || !line) return null;
+        const lcs = getComputedStyle(line);
+        const keys = Array.from(document.querySelectorAll('#view .summary-line__k'));
+        const lefts = keys.map((el) => Math.round(el.getBoundingClientRect().right));
+        return {
+          listAlign: getComputedStyle(list).alignItems,
+          lineJustify: lcs.justifyContent,
+          textAlign: lcs.textAlign,
+          keyRightEdges: lefts,
+          keyColumnAligned: lefts.length > 1 ? lefts.every((x) => Math.abs(x - lefts[0]) <= 1) : false,
+          firstKeyLeft: keys.length ? Math.round(keys[0].getBoundingClientRect().left) : null,
+          panelLeft: Math.round(document.querySelector('#view .summary-list').getBoundingClientRect().left),
+        };
+      })()`);
+      step(
+        '任务摘要左对齐（键右对齐、值起点成一条竖线）',
+        Boolean(summaryAlign) &&
+          summaryAlign.lineJustify === 'flex-start' &&
+          summaryAlign.textAlign === 'left' &&
+          summaryAlign.keyColumnAligned,
+        summaryAlign
+          ? `justify=${summaryAlign.lineJustify} text=${summaryAlign.textAlign} 键右边缘一致=${summaryAlign.keyColumnAligned}`
+          : '取不到摘要对齐信息'
+      );
+
       // 表头吸顶：滚动后表头与滚动容器顶端之间不应有空隙
       await js(`window.__khsTest ? window.__khsTest.goto('#/formats') : null`);
       await settle(1400);
