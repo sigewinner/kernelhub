@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  自绘安装器 / 卸载器的清单（2.2.7）
+
+  为什么必须要有它：Windows 的 UAC 有一条「安装程序检测」启发式规则 ——
+  文件名里含 setup / install 字样的 exe，如果**没有清单**声明执行级别，
+  系统会自动要求提权（弹 UAC）。我们的安装器是**按用户安装**（写 HKCU、
+  装到 %LOCALAPPDATA%\Programs），根本不需要管理员权限，被启发式规则拖去提权
+  反而会失败（实测报「操作被用户取消」）。
+
+  这里显式声明 asInvoker：不请求提权，按普通权限运行。
+
+  刻意**不声明** dpiAware：界面是固定像素自绘的，让系统按显示缩放整体放大
+  （高 DPI 下略软，但版式不会被缩放打乱）。
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <assemblyIdentity version="1.0.0.0" name="KernelHub.Studio.Setup" type="win32" />
+  <description>KernelHub Studio Setup</description>
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
+    <security>
+      <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 / 11 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+    </application>
+  </compatibility>
+</assembly>

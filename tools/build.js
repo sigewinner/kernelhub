@@ -76,7 +76,13 @@ function run() {
   else args.push('--win');
   if (has('--dir')) args.push('--dir');
   if (has('--portable')) args.push('portable');
-  if (has('--nsis')) args.push('nsis');
+  /**
+   * 2.2.7：安装包不再由 NSIS 产出，改用自绘安装器
+   * （installer/Setup.cs，由 tools/build-installer.js 用 Windows 自带的 csc.exe 编译）。
+   * 这里保留 --nsis 开关只为兼容旧命令：它不再改变 electron-builder 的目标，
+   * 安装器统一在打包完成后由 build-installer.js 生成。
+   */
+  if (has('--nsis')) say('  提示：--nsis 已不再需要，安装包统一由自绘安装器生成');
 
   const env = { ...process.env };
   // 2.0.0：默认壳模式（不打包内核仓库）；只有显式 --with-hub 才走一体化
@@ -177,7 +183,29 @@ function report() {
   }
 }
 
+/**
+ * 打包完成后再生成自绘安装器（需要 win-unpacked 作为 payload）。
+ * 只在 Windows 全量打包时做：--dir / --linux / --mac 都跳过。
+ */
+function buildCustomInstaller() {
+  if (has('--linux') || has('--mac') || has('--dir')) return 0;
+  const unpacked = path.join(ROOT, 'release', 'win-unpacked', 'KernelHub Studio.exe');
+  if (!fs.existsSync(unpacked)) {
+    say('  · 没有 win-unpacked，跳过自绘安装器');
+    return 0;
+  }
+  say('');
+  say('▸ 生成自绘安装器');
+  const res = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'build-installer.js')], {
+    cwd: ROOT,
+    stdio: 'inherit',
+    shell: false,
+  });
+  return res.status === null ? 1 : res.status;
+}
+
 if (!preflight()) process.exit(1);
 const code = run();
+const installerCode = code === 0 ? buildCustomInstaller() : 0;
 report();
-process.exit(code);
+process.exit(code === 0 ? installerCode : code);

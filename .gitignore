@@ -27,3 +27,7 @@ launch-out.txt
 .idea/
 Thumbs.db
 desktop.ini
+
+# 自绘安装器的编译中间产物（payload.7z、Version.g.cs、uninstall.exe）
+.installer-obj/
+

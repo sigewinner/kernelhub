@@ -80,14 +80,17 @@ FFmpeg、PyMuPDF、Pillow、Office 文档这些大块头，在「插件」页按
 
 ## 客户端安装
 
+> 2.2.7 起安装包是**自绘安装器**（不再是 NSIS 界面）：无边框圆角窗口、品牌色大按钮、
+> 圆角进度条；**按用户安装，不需要管理员权限**；自带卸载器，卸载不删插件与设置。
+
 ### 1. 下载
 
 从 [Releases](https://github.com/sigewinner/kernelhub/releases/latest) 下载：
 
 | 文件 | 大小 | 说明 |
 |---|---|---|
-| `KernelHub Studio-2.2.6-setup.exe` | 89.9 MB | 安装版：可选安装目录，自动建快捷方式 |
-| `KernelHub Studio-2.2.6-portable.exe` | 89.6 MB | 便携版：免安装，首次启动要自解压，稍慢十几秒 |
+| `KernelHub Studio-2.2.7-setup.exe` | 89.9 MB | 安装版：可选安装目录，自动建快捷方式 |
+| `KernelHub Studio-2.2.7-portable.exe` | 89.6 MB | 便携版：免安装，首次启动要自解压，稍慢十几秒 |
 
 ### 2. 系统要求
 

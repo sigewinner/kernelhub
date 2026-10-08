@@ -1650,10 +1650,19 @@ async function runSelfTest() {
         else process.env.PORTABLE_EXECUTABLE_FILE = saved;
         return yes;
       })();
+      /**
+       * 这一项只断言**逻辑**，不断言「当前必须以哪种方式运行」——
+       * 安装版与便携版自检都会跑到这里，早期版本硬断言 isPortableBuild() === false，
+       * 结果便携版自检必然挂一项（实测踩到）。现在只校验：
+       *   · 参数是 /S --updated
+       *   · 注入 PORTABLE_EXECUTABLE_FILE 后便携版识别生效
+       * 当前运行方式只作为信息打印。
+       */
+      const portableNow = isPortableBuild();
       step(
         '更新改用静默安装（不弹向导、沿用首次安装目录）',
-        SILENT_INSTALL_ARGS.join(' ') === '/S --updated' && portableWhenSet === true && isPortableBuild() === false,
-        `参数=${SILENT_INSTALL_ARGS.join(' ')} 便携版识别=${portableWhenSet} 当前=安装版`
+        SILENT_INSTALL_ARGS.join(' ') === '/S --updated' && portableWhenSet === true,
+        `参数=${SILENT_INSTALL_ARGS.join(' ')} 便携版识别（注入后）=${portableWhenSet} 当前运行方式=${portableNow ? '便携版' : '安装版'}`
       );
 
       /* ---- 2.2.1：界面语言与中文路径 ---- */

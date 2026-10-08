@@ -112,50 +112,25 @@ module.exports = {
   // （注意不要用 signAndEditExecutable: false —— 那会连图标和元数据一起跳过）
   win: {
     target: [
-      { target: 'nsis', arch: ['x64'] },
+      /**
+       * 2.2.7：安装包不再由 NSIS 产出。
+       *
+       * 安装界面改成**自绘**的：installer/Setup.cs（WinForms + GDI+ 画圆角窗口、
+       * 品牌色大按钮、进度条与淡入动画），由 tools/build-installer.js 用 Windows
+       * 自带的 csc.exe 编译成单个 exe，payload 用 7z 嵌进资源。
+       * 这样才做得出「无系统标题栏 + 圆角 + 大按钮」的现代界面 —— 官方 NSIS 只能
+       * 换图与文案（MUI2 没有颜色/皮肤 define，工具链里也没有皮肤引擎）。
+       *
+       * 所以这里只留便携版目标；安装包在 electron-builder 跑完后由
+       * tools/build.js 调 tools/build-installer.js 生成。
+       * 原来的 nsis 配置（perMachine / include / installerHeader.bmp 等）一并移除，
+       * 相关历史与实验结论见 git 记录与 installer/ 目录里的注释。
+       */
       { target: 'portable', arch: ['x64'] },
     ],
     icon: ICON,
     signExecutable: false,
     artifactName: '${productName}-${version}-${arch}-${target}.${ext}',
-  },
-  nsis: {
-    oneClick: false,
-    /**
-     * 2.2.5：让安装向导**只留「选定安装位置」一个参数**。
-     *
-     * 模板的 assisted 流程里，「安装选项（为所有用户 / 仅为我）」这一页是
-     * `!ifndef INSTALL_MODE_PER_ALL_USERS` 时才插入的（见 assistedInstaller.nsh）。
-     * 也就是说：perMachine: true 这一页自然就没了。
-     *
-     * 我也试过用 nsis.script 换掉整个脚本以保留 per-user（那样不弹 UAC），
-     * 但 electron-builder 3.x 的自定义脚本分支没能把卸载器文件传给 makensis
-     * （`-DUNINSTALLER_OUT_FILE` 传的是空值，构建必然失败）——即使用与模板
-     * **逐字节相同**的脚本也一样失败，所以这条路是死的。实测结论记在这里，
-     * 免得后人再试一遍。
-     *
-     * 代价（已知并接受）：装到 Program Files、需要管理员权限；
-     * 应用内「下载并静默安装」更新时会弹一次 UAC，但流程仍然无向导。
-     */
-    perMachine: true,
-    allowToChangeInstallationDirectory: true,
-    createDesktopShortcut: true,
-    createStartMenuShortcut: true,
-    shortcutName: 'KernelHub Studio',
-    deleteAppDataOnUninstall: false,
-    artifactName: '${productName}-${version}-setup.${ext}',
-    /**
-     * 自定义 include（preamble 阶段生效）：去掉完成页的「运行应用」复选框、
-     * 改完成页文案。文件名刻意不叫 installer.nsh —— 模板的 installSection.nsh
-     * 会 `!include installer.nsh`（指模板自己的），同名会把它顶掉导致构建失败。
-     */
-    include: 'build/khs-installer.nsh',
-    /**
-     * 界面用图：NSIS 只吃 BMP，文件名是 electron-builder 约定，
-     * 由 `node .gittools/make-nsis-overrides.js` 生成（白底 + 1px 黑线 + 一个红方块）。
-     * installerHeader.bmp 150×57 出现在内页右上，installerSidebar.bmp 164×314
-     * 出现在完成页左侧。
-     */
   },
   portable: {
     artifactName: '${productName}-${version}-portable.${ext}',
