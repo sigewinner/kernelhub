@@ -82,6 +82,30 @@ const READ_TEXT = `
       results.push({ ...view, ...data });
     }
 
+    // 格式详情卡片（2.2.4）：点第一行打开，量卡片里的文本 ——
+    // 新加的格式说明是双语的，这里能验证英文模式下确实是英文
+    {
+      await browser.eval(`location.hash = '#/formats'; return true;`);
+      await new Promise((r) => setTimeout(r, 1800));
+      await browser.eval(`
+        const tr = document.querySelector('#view table tbody tr');
+        if (tr) tr.click();
+        return true;
+      `);
+      await new Promise((r) => setTimeout(r, 1200));
+      const data = await browser.eval(`
+        const panel = document.querySelector('.sheet');
+        const text = panel ? panel.innerText : '';
+        const cjk = (text.match(/[\\u4e00-\\u9fff]/g) || []).length;
+        const total = text.replace(/\\s/g, '').length;
+        const left = Array.from(new Set(
+          text.split('\\n').map((s) => s.trim()).filter((s) => /[\\u4e00-\\u9fff]/.test(s))
+        )).slice(0, 10);
+        return { cjk, total, left };
+      `);
+      results.push({ id: 'format-detail', name: '格式·详情卡片', ...data });
+    }
+
     for (const pane of SETTINGS_PANES) {
       await browser.eval(`location.hash = '#/settings'; return true;`);
       await new Promise((r) => setTimeout(r, 1200));

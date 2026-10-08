@@ -653,12 +653,18 @@
 
 /* -------------------------------------------------- 空状态 / 错误 / 提示 */
 
+/**
+ * 空状态（2.2.4 起居中）。
+ * 原来靠左顶在容器左上角，一整屏空白显得没做完；居中 + 加宽上下留白之后，
+ * 「这里本来就该是空的」这件事才说得清楚。
+ */
 .empty {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: var(--sp-2);
-  padding: var(--sp-6) 0;
+  align-items: center;
+  text-align: center;
+  gap: var(--sp-3);
+  padding: var(--sp-8) var(--sp-4);
 }
 
 .empty__title {
@@ -669,13 +675,15 @@
 .empty__text {
   font-size: var(--fs-13);
   color: var(--c-ink-2);
-  max-width: 52ch;
+  max-width: 46ch;
+  line-height: 1.7;
 }
 
 .empty__actions {
   display: flex;
+  justify-content: center;
   gap: var(--sp-2);
-  margin-top: var(--sp-2);
+  margin-top: var(--sp-3);
 }
 
 .error-state {

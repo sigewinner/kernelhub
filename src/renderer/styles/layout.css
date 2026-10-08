@@ -218,14 +218,30 @@
   overflow: auto;
   background: var(--c-paper);
   padding: var(--sp-6) var(--sp-7) var(--sp-8);
+  /* 2.2.4：让内容列能撑满高度 —— 格式页的表格靠这个把下方空间用起来 */
+  display: flex;
+  flex-direction: column;
 }
 
-/* 视图内容：最大 1200px、左对齐、右侧留白 */
+/**
+ * 视图内容：最大 1200px、**水平居中**（2.2.4）。
+ * 原来这里是左对齐 + 右侧留白，宽屏上整块内容贴着左边、右边空一大片，
+ * 看起来像没排完版。改成居中之后左右留白对称，才是「留白有致」。
+ */
 .view-inner {
+  width: 100%;
   max-width: var(--w-content-max);
+  margin: 0 auto;
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: var(--sp-5);
+}
+
+/* 格式页是一张宽表：不受 1200px 限制，把整页宽度用满 */
+.view-inner[data-view="formats"] {
+  max-width: none;
 }
 
 /* ---------------------------------------------------------------- 状态栏 */

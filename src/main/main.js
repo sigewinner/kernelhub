@@ -1721,6 +1721,129 @@ async function runSelfTest() {
         i18nFull ? `词条=${i18nFull.entries}（六个视图 + 设置页文案已补齐）` : '取不到词典规模'
       );
 
+      /* ---- 2.2.4：版面居中 + 格式详情卡片 ---- */
+
+      await js(`window.__khsTest ? window.__khsTest.goto('#/formats') : null`);
+      await settle(1400);
+
+      // 内容列水平居中：左右留白应当对称（原来是左对齐，右边空一大片）
+      // 注意用 clientWidth 而不是 getBoundingClientRect().width ——
+      // 格式页有 100+ 行、必然出现滚动条，滚动条那 ~10px 不算留白差。
+      const centering = await js(`(() => {
+        const view = document.querySelector('#view');
+        const inner = document.querySelector('#view .view-inner');
+        if (!view || !inner) return null;
+        const vr = view.getBoundingClientRect();
+        const ir = inner.getBoundingClientRect();
+        const cs = getComputedStyle(view);
+        const padL = parseFloat(cs.paddingLeft) || 0;
+        const padR = parseFloat(cs.paddingRight) || 0;
+        const toolbar = document.querySelector('#view .toolbar');
+        return {
+          leftGap: Math.round(ir.left - vr.left - padL),
+          rightGap: Math.round(view.clientWidth - (ir.right - vr.left) - padR),
+          scrollbar: Math.round(vr.width - view.clientWidth),
+          toolbarJustify: toolbar ? getComputedStyle(toolbar).justifyContent : '',
+        };
+      })()`);
+      step(
+        '内容列水平居中（左右留白对称）',
+        Boolean(centering) && Math.abs(centering.leftGap - centering.rightGap) <= 2,
+        centering
+          ? `左留白=${centering.leftGap}px 右留白=${centering.rightGap}px（滚动条 ${centering.scrollbar}px）工具栏=${centering.toolbarJustify}`
+          : '取不到版面信息'
+      );
+
+      const fmtCenter = await js(`(() => {
+        const th = document.querySelector('#view table.table--center th');
+        const td = document.querySelector('#view table.table--center td');
+        return th ? { th: getComputedStyle(th).textAlign, td: td ? getComputedStyle(td).textAlign : '' } : null;
+      })()`);
+      step(
+        '格式表元素居中',
+        Boolean(fmtCenter) && fmtCenter.th === 'center' && fmtCenter.td === 'center',
+        fmtCenter ? `th=${fmtCenter.th} td=${fmtCenter.td}` : '没找到居中表'
+      );
+
+      // 点一行 → 右侧滑出缓动卡片，卡片里应有「性质」与「二进制排版」
+      const rowClicked = await js(`(() => {
+        const tr = document.querySelector('#view table tbody tr');
+        if (!tr) return false;
+        tr.click();
+        return true;
+      })()`);
+      await settle(900);
+      const card = await js(`(() => {
+        const root = document.querySelector('.sheet-host');
+        const panel = document.querySelector('.sheet');
+        const body = document.querySelector('.detail-center');
+        if (!root || !panel) return null;
+        const cs = getComputedStyle(panel);
+        return {
+          open: root.dataset.open === 'true',
+          transition: cs.transitionDuration,
+          textAlign: body ? getComputedStyle(body).textAlign : '',
+          sections: Array.from(document.querySelectorAll('.detail-section__title')).map((e) => e.textContent.trim()),
+          text: (panel.innerText || '').replace(/\\s+/g, ' ').slice(0, 130),
+        };
+      })()`);
+      step(
+        '点格式行后详情从右侧缓慢弹出',
+        Boolean(card) &&
+          rowClicked &&
+          card.open &&
+          card.textAlign === 'center' &&
+          parseFloat(card.transition) >= 0.2 &&
+          card.sections.some((s) => /性质/.test(s)) &&
+          card.sections.some((s) => /二进制排版/.test(s)),
+        card
+          ? `打开=${card.open} 过渡=${card.transition} 正文居中=${card.textAlign} 分节=[${card.sections.join(' / ')}]`
+          : '取不到详情卡片'
+      );
+      step(
+        '格式详情里有该格式的说明与二进制排版',
+        Boolean(card && card.text && card.text.length > 40),
+        card ? card.text : ''
+      );
+
+      // 点遮罩收起，并同步取消行选中
+      await js(`(() => { const s = document.querySelector('.sheet-scrim'); if (s) s.click(); return true; })()`);
+      await settle(700);
+      const cardClosed = await js(`(() => {
+        const root = document.querySelector('.sheet-host');
+        const sel = document.querySelector('#view table tbody tr[aria-selected="true"]');
+        return { open: root ? root.dataset.open : null, stillSelected: Boolean(sel) };
+      })()`);
+      step(
+        '点遮罩收起详情并同步取消行选中',
+        Boolean(cardClosed) && cardClosed.open === 'false' && cardClosed.stillSelected === false,
+        cardClosed ? `open=${cardClosed.open} 仍有选中行=${cardClosed.stillSelected}` : '取不到状态'
+      );
+
+      // 空状态居中
+      await js(`window.__khsTest ? window.__khsTest.goto('#/batch') : null`);
+      await settle(1200);
+      const emptyProbe = await js(`(() => {
+        const el = document.querySelector('#view .empty');
+        if (!el) return null;
+        const cs = getComputedStyle(el);
+        const r = el.getBoundingClientRect();
+        const v = document.querySelector('#view').getBoundingClientRect();
+        return {
+          alignItems: cs.alignItems,
+          textAlign: cs.textAlign,
+          centered: Math.abs((r.left - v.left) - (v.right - r.right)) < 40,
+          title: (el.querySelector('.empty__title') || {}).textContent || '',
+        };
+      })()`);
+      step(
+        '空状态居中（内容成一根中轴）',
+        Boolean(emptyProbe) && emptyProbe.alignItems === 'center' && emptyProbe.textAlign === 'center' && emptyProbe.centered,
+        emptyProbe
+          ? `「${emptyProbe.title}」align=${emptyProbe.alignItems} text=${emptyProbe.textAlign} 水平居中=${emptyProbe.centered}`
+          : '取不到空状态'
+      );
+
       // 回到插件页并切回「可安装」标签：后面的目录渲染断言依赖它
       await js(`window.__khsTest ? window.__khsTest.goto('#/plugins') : null`);
       await settle(1200);

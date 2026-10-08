@@ -423,7 +423,7 @@ export async function mount(host, ctx) {
         h('span.badge.badge--mono', { textContent: t('{0} 条', { 0: caps.length }) })
       ),
       caps.length
-        ? h('table.table.caps-table', null,
+        ? h('table.table.table--center.caps-table', null,
           h('colgroup', null,
             h('col', { style: { width: '26%' } }),
             h('col', { style: { width: '30%' } }),
@@ -458,7 +458,7 @@ export async function mount(host, ctx) {
         h('span.badge.badge--mono', { textContent: t('{0} 项', { 0: params.length }) })
       ),
       params.length
-        ? h('table.table.params-table', null,
+        ? h('table.table.table--center.params-table', null,
           h('colgroup', null,
             h('col', { style: { width: '22%' } }),
             h('col', { style: { width: '12%' } }),

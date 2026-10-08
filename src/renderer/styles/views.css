@@ -37,9 +37,15 @@
   margin-top: var(--sp-4);
 }
 
+/**
+ * 工具栏（2.2.4 起居中）。
+ * 每页的筛选/动作行现在都跟下面的内容共享同一根中轴；
+ * 需要靠右的元素仍然用 .toolbar__right（margin-left:auto 在居中容器里照样生效）。
+ */
 .toolbar {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--sp-2);
   flex-wrap: wrap;
 }
@@ -181,6 +187,7 @@
 .filelist__summary {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--sp-3);
   font-size: var(--fs-12);
   color: var(--c-ink-2);
@@ -192,17 +199,27 @@
   outline-offset: -2px;
 }
 
+/**
+ * 任务摘要（2.2.4 起居中）。
+ * 「目标格式 / 将使用 / 输出」这三行右栏信息原来左对齐贴着边，
+ * 现在整块居中：键右对齐、值左对齐，中间是对齐轴，三行的值起点在同一条竖线上。
+ */
 .summary-list {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
+  gap: var(--sp-4);
+  align-items: center;
 }
 
 .summary-line {
   display: flex;
   align-items: baseline;
-  gap: var(--sp-2);
+  justify-content: center;
+  gap: var(--sp-3);
   font-size: var(--fs-13);
+  width: 100%;
+  max-width: 42rem;
+  text-align: center;
 }
 
 .summary-line__k {
@@ -210,11 +227,13 @@
   min-width: 72px;
   font-size: var(--fs-12);
   color: var(--c-ink-3);
+  text-align: right;
 }
 
 .summary-line__v {
   min-width: 0;
   word-break: break-word;
+  text-align: left;
 }
 
 /* ================================================================= 队列 */
@@ -295,12 +314,99 @@
   border-bottom: 1px solid var(--c-rule);
 }
 
+/**
+ * 居中版表格容器（2.2.4，格式页）。
+ * 详情移进右侧卡片后，页面下方不再是「一大片空白」，
+ * 而是让表格自己占满剩余高度 —— 空的部分是留白，不是缺口。
+ */
+.tablewrap--center {
+  flex: 1 1 auto;
+  max-height: none;
+  min-height: 240px;
+  /*
+   * overflow 必须放开：表头的 position: sticky 是相对**最近的可滚动祖先**生效的。
+   * 这里若保留 overflow: auto，sticky 会绑在这个并不滚动的容器上，
+   * 外层 .view 滚动时表头就跟着跑掉了。
+   */
+  overflow: visible;
+}
+
 /* 表头在滚动容器里吸顶，长表格滚动时列标题不会跑掉 */
 .tablewrap .table thead th {
   position: sticky;
   top: 0;
   background: var(--c-paper);
   z-index: 1;
+}
+
+/* 工具栏也居中：整页从标题到表格都在同一根中轴上 */
+.toolbar--center {
+  justify-content: center;
+}
+
+/* ============================================== 格式 / 操作详情卡片（2.2.4）
+ *
+ * 整块居中排版，节与节之间留足空白。
+ * 排版规则：标题居中、正文居中且限宽（32–40 字一行最舒服，太宽读起来累），
+ * 标签流居中，键值对用 auto 两列并居中 —— 于是整张卡片是一根中轴。
+ */
+.detail-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-6);
+  padding: var(--sp-2) 0 var(--sp-4);
+  text-align: center;
+}
+
+.detail-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  max-width: 46rem;
+}
+
+/* 节标题：上下各一条细线，像一条分隔，不用背景块 */
+.detail-section__title {
+  width: 100%;
+  margin: 0;
+  padding-bottom: var(--sp-2);
+  border-bottom: var(--line);
+  font-size: var(--fs-12);
+  font-weight: 400;
+  letter-spacing: 0.16em;
+  color: var(--c-ink-3);
+  text-transform: uppercase;
+}
+
+/* 正文：限宽居中，行高放宽，读起来不压抑 */
+.detail-text {
+  max-width: 40rem;
+  margin: 0;
+  font-size: var(--fs-13);
+  line-height: 1.75;
+  color: var(--c-ink-2);
+}
+
+.tagflow--center {
+  justify-content: center;
+}
+
+/* 键值对居中：auto 两列让整块宽度贴合内容，再靠 auto 外边距居中 */
+.kv--center {
+  grid-template-columns: auto auto;
+  justify-content: center;
+  column-gap: var(--sp-5);
+}
+
+.kv--center .kv__k {
+  text-align: right;
+}
+
+.kv--center .kv__v {
+  text-align: left;
 }
 
 .matrix-detail {

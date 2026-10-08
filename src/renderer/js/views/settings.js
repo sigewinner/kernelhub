@@ -734,7 +734,7 @@ export async function mount(host, ctx) {
         ));
       }
       paneEl.appendChild(group(t('需要处理的内核'),
-        h('table.table', null,
+        h('table.table.table--center', null,
           h('colgroup', null,
             h('col', { style: { width: '30%' } }),
             h('col', { style: { width: '14%' } }),

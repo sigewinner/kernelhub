@@ -106,7 +106,7 @@ export async function mount(host, ctx) {
 
   /* --- 左：待转换文件 --- */
   const fileBody = h('tbody');
-  const fileTable = h('table.table', null,
+  const fileTable = h('table.table.table--center', null,
     h('colgroup', null,
       h('col', { style: { width: '56%' } }),
       h('col', { style: { width: '16%' } }),

@@ -770,6 +770,16 @@ const EN = {
   '取消': 'Cancel',
   '复制': 'Copy',
   '设置已保存': 'Settings saved',
+
+  /* ------------------------------------------------- 格式详情卡片（2.2.4） */
+  "格式详情": "Format details",
+  "格式 {0}": "Format {0}",
+  "暂无该格式的说明": "No description for this format yet",
+  "性质": "Properties",
+  "二进制排版": "Binary layout",
+  "在转换中的位置": "Where it fits in conversion",
+  "规模": "Scale",
+  "没有可推出的目标格式": "No target formats can be derived",
 };
 
 let currentLocale = 'zh-CN';

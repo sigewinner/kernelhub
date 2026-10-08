@@ -5,7 +5,13 @@
  *   工具栏：操作 ▾ + 视图 ▾（格式表 / 操作表）+ 搜索输入框
  *   内容 A（格式表）：格式 / 可作输入的操作 / 可作输出的操作 / 内核数
  *   内容 B（操作表）：操作 / 输入格式数 / 输出格式数 / 内核数
- *   点某一行选中（左侧 2px 红条），下方面板显示可达目标格式（纯文本标签流，不是按钮）
+ *
+ * 2.2.4 版面调整：
+ *   · 表格元素**居中**，整页不再左对齐堆在左上角
+ *   · 详情不再常驻页面下方（那里原本是一大片空白），改成**点行从右侧弹出缓动卡片**
+ *     —— 复用 sheet.js，弹出/收起本来就带缓动
+ *   · 卡片里补上**格式说明**：性质（是否无损、有没有透明通道…）与**二进制排版**
+ *     （文件头签名、整体结构、编码与算法），内容来自 formatInfo.js
  *
  * 数据全部来自 window.khs.kernels.formats() / kernels.ops()，界面不预设任何格式名。
  * 另外会把格式矩阵广播给命令面板（khs:formats-cache），避免重复 IPC。
@@ -13,7 +19,9 @@
 
 import { h, clear, on } from '../dom.js';
 import { formatLabel, thousands } from '../format.js';
-import { t, opText, listSeparator } from '../i18n.js';
+import { t, opText, listSeparator, getLocale } from '../i18n.js';
+import { createSheet } from '../sheet.js';
+import { formatInfoOf } from '../formatInfo.js';
 
 export async function mount(host, ctx) {
   const { store } = ctx;
@@ -45,21 +53,39 @@ export async function mount(host, ctx) {
     'aria-label': t('搜索格式或操作'),
   });
 
-  const tableHost = h('div.tablewrap');
-  const detailHost = h('div.matrix-detail');
+  const tableHost = h('div.tablewrap.tablewrap--center');
+
+  /**
+   * 详情卡片：从右侧滑出（缓动在 sheet.js / components.css 里）。
+   * 点某一行才出现 —— 页面下方因此空出来，整页是一张居中、留白均匀的表。
+   *
+   * onToggle：用户用 Esc / 点遮罩 / 点「关闭」收起卡片时，要把行选中一起取消，
+   * 否则会出现「卡片关了但那一行还是选中态」的不一致。
+   */
+  const detail = createSheet(host, {
+    id: 'format-detail',
+    title: t('格式详情'),
+    onToggle: (open) => {
+      if (!open && vs.selected) {
+        vs.selected = '';
+        render();
+      }
+    },
+  });
+  const detailBody = h('div.detail-center');
+  detail.body.appendChild(detailBody);
 
   const wrap = h('div.view-inner', { dataset: { view: 'formats' } },
     h('div.view-head', null,
       h('h1.view-title', { textContent: t('格式') }),
       h('div.view-rule')
     ),
-    h('div.toolbar', null,
+    h('div.toolbar.toolbar--center', null,
       h('div.selectwrap', { style: { width: '160px' } }, opSelect),
       h('div.selectwrap', { style: { width: '140px' } }, viewSelect),
       h('div', { style: { width: '240px' } }, searchInput)
     ),
-    tableHost,
-    detailHost
+    tableHost
   );
   host.appendChild(wrap);
 
@@ -138,7 +164,6 @@ export async function mount(host, ctx) {
 
   function render() {
     clear(tableHost);
-    clear(detailHost);
 
     if (vs.error) {
       tableHost.appendChild(h('div.error-state', null,
@@ -159,7 +184,9 @@ export async function mount(host, ctx) {
     if (vs.view === 'formats') renderFormatsTable();
     else renderOpsTable();
 
-    renderDetail();
+    // 详情只在选中时出现：点行 → 右侧滑出缓动卡片；再点同一行 → 收起
+    if (vs.selected) renderDetailCard();
+    else detail.close();
   }
 
   /** 表格行：整行可点（tr 而非 button —— 本屏按钮数为 0） */
@@ -202,7 +229,7 @@ export async function mount(host, ctx) {
         render();
       }));
     }
-    tableHost.appendChild(h('table.table', null,
+    tableHost.appendChild(h('table.table.table--center', null,
       h('colgroup', null,
         h('col', { style: { width: '14%' } }),
         h('col', { style: { width: '36%' } }),
@@ -245,7 +272,7 @@ export async function mount(host, ctx) {
         render();
       }));
     }
-    tableHost.appendChild(h('table.table', null,
+    tableHost.appendChild(h('table.table.table--center', null,
       h('colgroup', null,
         h('col', { style: { width: '40%' } }),
         h('col', { style: { width: '20%' } }),
@@ -262,67 +289,104 @@ export async function mount(host, ctx) {
     ));
   }
 
-  /** 下方面板：选中项的可用目标格式（纯文本标签流） */
-  function renderDetail() {
-    clear(detailHost);
-    if (!vs.selected) {
-      return;
-    }
+  /**
+   * 详情卡片（2.2.4）：从右侧滑出，内容整块居中。
+   *
+   * 里面分两段：
+   *   · 这个格式**是什么**（说明 + 性质标签）
+   *   · **二进制怎么排版**（文件头签名、整体结构、编码与算法）—— 来自 formatInfo.js
+   * 末尾接上可达关系（可作输入/输出的操作、能推出来的目标格式、涉及几个内核）。
+   */
+  function renderDetailCard() {
+    clear(detailBody);
 
     const tagFlow = (list, emptyText) => {
-      const flow = h('div.tagflow');
+      const flow = h('div.tagflow.tagflow--center');
       const values = Array.isArray(list) ? list : [];
       if (!values.length) return h('div.note-line.dim', { textContent: emptyText });
       for (const value of values) flow.appendChild(h('span.tag', { textContent: formatLabel(value) }));
       return flow;
     };
 
+    /** 卡片里的一节：小标题 + 内容，整体居中 */
+    const section = (title, ...children) =>
+      h('section.detail-section', null,
+        h('h3.detail-section__title', { textContent: title }),
+        ...children.filter(Boolean)
+      );
+
     if (vs.view === 'formats') {
       const row = vs.formats.find((f) => f && f.format === vs.selected);
-      if (!row) return;
-      // 该格式可作为输入的操作所能产出的目标格式（由操作目录推导，不硬编码任何格式）
+      if (!row) {
+        detail.close();
+        return;
+      }
+
+      detail.setTitle(t('格式 {0}', { 0: formatLabel(row.format) }));
+      const info = formatInfoOf(row.format, getLocale());
+      detail.setSubtitle(info ? info.summary : t('暂无该格式的说明'));
+
+      // ① 性质标签
+      if (info && Array.isArray(info.traits) && info.traits.length) {
+        const flow = h('div.tagflow.tagflow--center');
+        for (const trait of info.traits) flow.appendChild(h('span.tag', { textContent: trait }));
+        detailBody.appendChild(section(t('性质'), flow));
+      }
+
+      // ② 二进制排版
+      if (info && info.layout) {
+        detailBody.appendChild(section(t('二进制排版'),
+          h('p.detail-text', { textContent: info.layout })
+        ));
+      }
+
+      // ③ 可达关系
       const targets = new Set();
       for (const opId of row.asInput) {
         const op = vs.ops.find((o) => o && o.op === opId);
         for (const fmt of (op && op.to) || []) if (fmt !== '*') targets.add(fmt);
       }
       targets.delete(row.format);
-      detailHost.appendChild(h('div.section__title', null,
-        h('span', { textContent: t('格式 ') }),
-        h('span.mono', { textContent: formatLabel(row.format) })
+
+      detailBody.appendChild(section(t('在转换中的位置'),
+        h('div.kv.kv--center', null,
+          h('div.kv__k', { textContent: t('可作输入') }),
+          h('div.kv__v', { textContent: row.asInput.map(opLabel).join(listSeparator()) || '—' }),
+          h('div.kv__k', { textContent: t('可作输出') }),
+          h('div.kv__v', { textContent: row.asOutput.map(opLabel).join(listSeparator()) || '—' }),
+          h('div.kv__k', { textContent: t('涉及内核') }),
+          h('div.kv__v', { textContent: t('{0} 个', { 0: thousands(row.kernelCount || 0) }) })
+        ),
+        h('div.note-line', { textContent: t('作为输入时的可用目标格式（由参与的操作推出）：') }),
+        tagFlow(Array.from(targets).sort(), t('没有可推出的目标格式'))
       ));
-      detailHost.appendChild(h('div.kv', null,
-        h('div.kv__k', { textContent: t('可作输入') }),
-        h('div.kv__v', { textContent: row.asInput.map(opLabel).join(listSeparator()) || '—' }),
-        h('div.kv__k', { textContent: t('可作输出') }),
-        h('div.kv__v', { textContent: row.asOutput.map(opLabel).join(listSeparator()) || '—' }),
-        h('div.kv__k', { textContent: t('涉及内核') }),
-        h('div.kv__v', { textContent: t('{0} 个', { 0: thousands(row.kernelCount || 0) }) })
-      ));
-      detailHost.appendChild(h('div.note-line', { textContent: t('作为输入时的可用目标格式（由参与的操作推出）：') }));
-      detailHost.appendChild(tagFlow(Array.from(targets).sort(), '没有可推出的目标格式'));
+
+      detail.open();
       return;
     }
 
     const row = vs.ops.find((o) => o && o.op === vs.selected);
-    if (!row) return;
-    detailHost.appendChild(h('div.section__title', null,
-      h('span', { textContent: opText(row.op, row.label) }),
-      h('span.mono.dim', { textContent: row.op })
+    if (!row) {
+      detail.close();
+      return;
+    }
+
+    detail.setTitle(opText(row.op, row.label));
+    detail.setSubtitle(row.description || '');
+
+    detailBody.appendChild(section(t('规模'),
+      h('div.kv.kv--center', null,
+        h('div.kv__k', { textContent: t('输入格式') }),
+        h('div.kv__v', { textContent: t('{0} 种', { 0: thousands((row.from || []).length) }) }),
+        h('div.kv__k', { textContent: t('输出格式') }),
+        h('div.kv__v', { textContent: t('{0} 种', { 0: thousands((row.to || []).length) }) }),
+        h('div.kv__k', { textContent: t('参与内核') }),
+        h('div.kv__v', { textContent: t('{0} 个', { 0: thousands(row.kernelCount || 0) }) })
+      )
     ));
-    if (row.description) detailHost.appendChild(h('div.note-line.dim', { textContent: row.description }));
-    detailHost.appendChild(h('div.kv', null,
-      h('div.kv__k', { textContent: t('输入格式') }),
-      h('div.kv__v', { textContent: t('{0} 种', { 0: thousands((row.from || []).length) }) }),
-      h('div.kv__k', { textContent: t('输出格式') }),
-      h('div.kv__v', { textContent: t('{0} 种', { 0: thousands((row.to || []).length) }) }),
-      h('div.kv__k', { textContent: t('参与内核') }),
-      h('div.kv__v', { textContent: t('{0} 个', { 0: thousands(row.kernelCount || 0) }) })
-    ));
-    detailHost.appendChild(h('div.note-line', { textContent: t('输入格式：') }));
-    detailHost.appendChild(tagFlow(row.from, '—'));
-    detailHost.appendChild(h('div.note-line', { textContent: t('输出格式：') }));
-    detailHost.appendChild(tagFlow(row.to, '—'));
+    detailBody.appendChild(section(t('输入格式'), tagFlow(row.from, '—')));
+    detailBody.appendChild(section(t('输出格式'), tagFlow(row.to, '—')));
+    detail.open();
   }
 
   /* --------------------------------------------------------------- 事件 */
