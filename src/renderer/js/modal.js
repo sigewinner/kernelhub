@@ -56,7 +56,7 @@ export function open(opts = {}) {
     h('button.modal__close', {
       type: 'button',
       title: t('关闭（Esc）'),
-      'aria-label': '关闭',
+      'aria-label': t('关闭'),
       on: { click: () => close(undefined, { via: 'button' }) },
     }, icon('close', { size: 15 }), srText(t('关闭对话框')))
   );
@@ -179,7 +179,7 @@ export function codeBlock(content, { lang = '', wrap = true, maxHeight = '' } = 
     on: {
       click: async () => {
         const ok = await copyText(textValue);
-        if (ok) toast.success(t('已复制到剪贴板'), { text: `${textValue.length} 个字符` });
+        if (ok) toast.success(t('已复制到剪贴板'), { text: t('{0} 个字符', { 0: textValue.length }) });
         else toast.warn(t('复制失败'), '当前环境不允许访问剪贴板，请手动选择文本复制');
       },
     },
@@ -188,7 +188,7 @@ export function codeBlock(content, { lang = '', wrap = true, maxHeight = '' } = 
   return h(
     `div.codeblock${wrap ? '.codeblock--wrap' : ''}`,
     null,
-    h('div.codeblock__toolbar', null, h('span.codeblock__lang', { textContent: lang || `纯文本 · ${textValue.length} 字符` }), copyBtn),
+    h('div.codeblock__toolbar', null, h('span.codeblock__lang', { textContent: lang || t('纯文本 · {0} 字符', { 0: textValue.length }) }), copyBtn),
     pre
   );
 }
@@ -198,7 +198,7 @@ export function pathChip(pathValue, { label = '', onOpen = null } = {}) {
   const value = String(pathValue || '');
   const chip = h('button.path-chip', {
     type: 'button',
-    title: `${value}\n（单击复制）`,
+    title: t('{0}\\n（单击复制）', { 0: value }),
     on: {
       click: async (event) => {
         if (onOpen && event.altKey) {
@@ -253,7 +253,7 @@ export async function detail(title, text, opts = {}) {
     title,
     subtitle: opts.subtitle,
     size: opts.size || 'lg',
-    body: codeBlock(text, { lang: opts.lang || `纯文本 · ${String(text || '').length} 字符`, wrap: opts.wrap !== false }),
+    body: codeBlock(text, { lang: opts.lang || t('纯文本 · {0} 字符', { 0: String(text || '').length }), wrap: opts.wrap !== false }),
     actions: [{ label: t('关闭'), kind: 'ghost', value: false }],
   });
   return result;
@@ -271,7 +271,7 @@ export async function commandPreview(preview) {
       'div.error-state',
       null,
       h('div.error-state__head', null, icon('error', { size: 15 }), h('span', '无法生成命令行')),
-      h('div.error-state__msg', { textContent: `${preview.code || 'ERROR'}：${preview.message || '未知原因'}` }),
+      h('div.error-state__msg', { textContent: t('{0}：{1}', { 0: preview.code || 'ERROR', 1: preview.message || '未知原因' }) }),
       preview.detail ? h('div.error-state__detail', { textContent: String(preview.detail) }) : null
     ));
     const { result } = open({
@@ -302,7 +302,7 @@ export async function commandPreview(preview) {
     // 用逐行「一行一个参数」的展示，便于看清每个 argv 元素
     const lines = [argv[0] || '', ...argv.slice(1)].join('\n');
     body.appendChild(h('div.modal__section', null,
-      h('div.modal__section-title', null, icon('terminal', { size: 14 }), h('span', `argv（${argv.length} 项）`)),
+      h('div.modal__section-title', null, icon('terminal', { size: 14 }), h('span', t('argv（{0} 项）', { 0: argv.length }))),
       codeBlock(argv.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' '), { lang: '单行命令（可直接粘贴）' }),
       h('div', { style: { height: 'var(--sp-3)' } }),
       codeBlock(lines, { lang: '逐项参数' })

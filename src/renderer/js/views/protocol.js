@@ -15,6 +15,7 @@
 import { h, clear, on, copyText } from '../dom.js';
 import { createSheet } from '../sheet.js';
 import { thousands, orDash } from '../format.js';
+import { t } from '../i18n.js';
 
 /* ---------------------------------------------------------------- Markdown */
 
@@ -235,24 +236,24 @@ export async function mount(host, ctx) {
 
   /* --------------------------------------------------------------- 结构 */
 
-  const tocEl = h('nav.toc', { 'aria-label': '文档目录' });
+  const tocEl = h('nav.toc', { 'aria-label': t('文档目录') });
   const docEl = h('div');
 
   const copyDocBtn = h('button.btn', {
     type: 'button',
-    title: '复制整篇协议 Markdown',
+    title: t('复制整篇协议 Markdown'),
     on: { click: () => copyDoc() },
-  }, h('span', { textContent: '复制全文' }));
+  }, h('span', { textContent: t('复制全文') }));
 
   const schemaBtn = h('button.btn', {
     type: 'button',
-    title: '查看三份机器可校验的 JSON Schema',
+    title: t('查看三份机器可校验的 JSON Schema'),
     on: { click: () => openSchemas() },
-  }, h('span', { textContent: '查看 Schema' }));
+  }, h('span', { textContent: t('查看 Schema') }));
 
   const wrap = h('div.view-inner', { dataset: { view: 'protocol' } },
     h('div.view-head', null,
-      h('h1.view-title', { textContent: '协议' }),
+      h('h1.view-title', { textContent: t('协议') }),
       h('div.view-rule')
     ),
     h('div.toolbar', null,
@@ -268,18 +269,18 @@ export async function mount(host, ctx) {
 
   /* ------------------------------------------------------- Schema 抽屉 */
 
-  const sheet = createSheet(host, { id: 'protocol-schema', title: 'Schema', subtitle: '三份机器可校验的 JSON Schema' });
+  const sheet = createSheet(host, { id: 'protocol-schema', title: 'Schema', subtitle: t('三份机器可校验的 JSON Schema') });
   const tabsEl = h('div.tabs');
   const schemaPre = h('pre', { textContent: '—' });
-  const schemaMeta = h('div.field__hint');
+  const schemaMeta = h('div.note-line.mono');
   const schemaCopyBtn = h('button.btn', {
     type: 'button',
-    title: '复制当前 Schema 原文',
+    title: t('复制当前 Schema 原文'),
     on: { click: () => copySchema() },
-  }, h('span', { textContent: '复制当前 Schema' }));
+  }, h('span', { textContent: t('复制当前 Schema') }));
 
   sheet.body.appendChild(h('div.param-section', null,
-    h('div.param-section__title', null, h('span', { textContent: 'Schema 文件' })),
+    h('div.param-section__title', null, h('span', { textContent: t('Schema 文件') })),
     tabsEl
   ));
   sheet.body.appendChild(h('div.param-section', null,
@@ -317,7 +318,7 @@ export async function mount(host, ctx) {
 
   function openSchemas() {
     if (!vs.schemas.length) {
-      ctx.toast.warn('没有可用的 Schema', { text: '主进程没有返回 Schema 文件。' });
+      ctx.toast.warn(t('没有可用的 Schema'), { text: t('主进程没有返回 Schema 文件。') });
       return;
     }
     renderSchemaTabs();
@@ -329,18 +330,18 @@ export async function mount(host, ctx) {
     const schema = vs.schemas[vs.activeSchema];
     if (!schema) return;
     const ok = await copyText(String(schema.text || ''));
-    if (ok) ctx.toast.success('Schema 已复制', { text: schema.name || '' });
-    else ctx.toast.warn('复制失败', '当前环境不允许访问剪贴板');
+    if (ok) ctx.toast.success(t('Schema 已复制'), { text: schema.name || '' });
+    else ctx.toast.warn(t('复制失败'), '当前环境不允许访问剪贴板');
   }
 
   async function copyDoc() {
     if (!vs.markdown) {
-      ctx.toast.warn('没有可复制的内容');
+      ctx.toast.warn(t('没有可复制的内容'));
       return;
     }
     const ok = await copyText(vs.markdown);
-    if (ok) ctx.toast.success('协议全文已复制', { text: `${vs.markdown.length} 个字符` });
-    else ctx.toast.warn('复制失败', '当前环境不允许访问剪贴板');
+    if (ok) ctx.toast.success(t('协议全文已复制'), { text: `${vs.markdown.length} 个字符` });
+    else ctx.toast.warn(t('复制失败'), '当前环境不允许访问剪贴板');
   }
 
   /* --------------------------------------------------------------- 渲染 */
@@ -348,7 +349,7 @@ export async function mount(host, ctx) {
   function renderToc() {
     clear(tocEl);
     if (!vs.headings.length) {
-      tocEl.appendChild(h('div.field__hint', { textContent: '文档没有标题。' }));
+      tocEl.appendChild(h('div.note-line.dim', { textContent: t('文档没有标题。') }));
       return;
     }
     for (const heading of vs.headings) {
@@ -416,7 +417,7 @@ export async function mount(host, ctx) {
         window.khs.protocol.doc(),
         window.khs.protocol.schemas(),
       ]);
-      if (!doc || doc.ok === false) throw new Error('主进程没有返回协议文档');
+      if (!doc || doc.ok === false) throw new Error(t('主进程没有返回协议文档'));
       vs.markdown = String(doc.markdown || '');
       vs.path = String(doc.path || '');
       vs.schemas = Array.isArray(schemas) ? schemas : [];
@@ -434,7 +435,7 @@ export async function mount(host, ctx) {
     if (vs.error) {
       docEl.appendChild(h('div.error-state', null,
         h('div.error-state__msg', { textContent: vs.error.message || String(vs.error) }),
-        h('button.linkbtn', { type: 'button', on: { click: () => load() } }, h('span', { textContent: '重试' }))
+        h('button.linkbtn', { type: 'button', on: { click: () => load() } }, h('span', { textContent: t('重试') }))
       ));
       return;
     }

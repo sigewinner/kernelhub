@@ -22,6 +22,7 @@
 import { h, clear, iconAction } from './dom.js';
 import { icon } from './icons.js';
 import { rangeHint } from './format.js';
+import { t } from './i18n.js';
 
 /* --------------------------------------------------------------- 可见性 */
 
@@ -214,7 +215,7 @@ function enumControl(spec, setter) {
   const options = Array.isArray(spec.enum) ? spec.enum : [];
   const select = h('select.select');
   if (!options.length) {
-    select.appendChild(h('option', { value: '', textContent: '（该参数未提供可选值）' }));
+    select.appendChild(h('option', { value: '', textContent: t('（该参数未提供可选值）') }));
   }
   for (const item of options) {
     const value = item && item.value !== undefined ? item.value : '';
@@ -262,17 +263,17 @@ function pathControl(spec, setter, common = {}) {
   const input = h('input.input.input--mono', {
     type: 'text',
     value: String(defaultOf(spec) || ''),
-    placeholder: '未选择',
+    placeholder: t('未选择'),
   });
   input.addEventListener('change', () => setter(spec, input.value));
 
   const browseDir = iconAction({
-    label: '选择目录',
+    label: t('选择目录'),
     classes: ['iconbtn'],
     children: [icon('folder', { size: 15 })],
     onClick: async () => {
       try {
-        const res = await window.khs.fs.pickFolder({ title: `为「${common.label || common.id}」选择目录` });
+        const res = await window.khs.fs.pickFolder({ title: t('为「{0}」选择目录', { 0: common.label || common.id }) });
         if (res && res.folder) {
           input.value = res.folder;
           setter(spec, input.value);
@@ -284,12 +285,12 @@ function pathControl(spec, setter, common = {}) {
   });
 
   const browseFile = iconAction({
-    label: '选择文件',
+    label: t('选择文件'),
     classes: ['iconbtn'],
     children: [icon('file', { size: 15 })],
     onClick: async () => {
       try {
-        const res = await window.khs.fs.pickFiles({ title: `为「${common.label || common.id}」选择文件` });
+        const res = await window.khs.fs.pickFiles({ title: t('为「{0}」选择文件', { 0: common.label || common.id }) });
         if (res && Array.isArray(res.files) && res.files.length) {
           input.value = res.files[0].path;
           setter(spec, input.value);
@@ -358,7 +359,7 @@ function colorControl(spec, setter) {
 function reportError(common, err) {
   const message = err && err.message ? err.message : String(err);
   window.dispatchEvent(new CustomEvent('khs:ui-error', {
-    detail: { title: `参数「${common.label || common.id}」选择失败`, message },
+    detail: { title: t('参数「{0}」选择失败', { 0: common.label || common.id }), message },
   }));
 }
 
@@ -387,9 +388,9 @@ export function createParamPanel(host, options = {}) {
   const advancedBody = h('div.param-grid');
   // 2.1.0：原「N 个参数不适用于当前组合，已自动隐藏」也是小字，改为挂在区块标题的悬停提示上
   const hiddenTip = { count: 0 };
-  const basicTitle = h('div.param-section__title', null, h('span', { textContent: '基础参数' }));
+  const basicTitle = h('div.param-section__title', null, h('span', { textContent: t('基础参数') }));
   const emptyState = h('div.empty', { style: { padding: 'var(--sp-4) 0' } },
-    h('div.empty__title', { textContent: '当前组合没有可调参数' })
+    h('div.empty__title', { textContent: t('当前组合没有可调参数') })
   );
 
   const root = h('div.param-panel');
@@ -399,13 +400,13 @@ export function createParamPanel(host, options = {}) {
   );
   const advancedSection = h('div.param-section', null,
     h('div.param-section__title', null,
-      h('span', { textContent: '高级参数' }),
+      h('span', { textContent: t('高级参数') }),
       h('span.badge.badge--mono', { dataset: { role: 'adv-count' }, textContent: '0' })
     ),
     advancedBody
   );
   const advancedFold = h('div.fold', { dataset: { open: 'false' } });
-  advancedFold.appendChild(h('div.fold__head', null, h('span', { textContent: '展开高级参数' })));
+  advancedFold.appendChild(h('div.fold__head', null, h('span', { textContent: t('展开高级参数') })));
   advancedFold.appendChild(h('div.fold__body', null, advancedSection));
   advancedFold.querySelector('.fold__head').addEventListener('click', () => setAdvancedOpen(!state.advancedOpen));
 
@@ -478,7 +479,7 @@ export function createParamPanel(host, options = {}) {
     }
     // 2.1.0：隐藏参数的数量改成悬停提示（原先是区块标题旁边的一行小字）
     hiddenTip.count = hiddenCount;
-    basicTitle.title = hiddenCount > 0 ? `${hiddenCount} 个参数不适用于当前组合，已自动隐藏` : '';
+    basicTitle.title = hiddenCount > 0 ? t('{0} 个参数不适用于当前组合，已自动隐藏', { 0: hiddenCount }) : '';
   }
 
   function setAdvancedOpen(open) {
@@ -559,7 +560,7 @@ export function createParamPanel(host, options = {}) {
 function buildField(spec, control) {
   const label = h('label.label', null,
     h('span', { textContent: spec.label || spec.id }),
-    spec.required ? h('span.field__req', { title: '必填', textContent: '*' }) : null,
+    spec.required ? h('span.field__req', { title: t('必填'), textContent: '*' }) : null,
     h('span.badge.badge--mono', { textContent: String(spec.type || 'string') })
   );
   /**

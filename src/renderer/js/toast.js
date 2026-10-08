@@ -109,7 +109,7 @@ function show(type, title, opts, opts2) {
   const closeBtn = h('button.toast__close', {
     type: 'button',
     title: t('关闭'),
-    'aria-label': '关闭通知',
+    'aria-label': t('关闭通知'),
     on: { click: () => close() },
   }, icon('close', { size: 13 }), srText(t('关闭通知')));
 

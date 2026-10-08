@@ -13,6 +13,7 @@
 
 import { h, clear, on } from '../dom.js';
 import { formatLabel, thousands } from '../format.js';
+import { t, opText, listSeparator } from '../i18n.js';
 
 export async function mount(host, ctx) {
   const { store } = ctx;
@@ -31,17 +32,17 @@ export async function mount(host, ctx) {
 
   /* --------------------------------------------------------------- 结构 */
 
-  const viewSelect = h('select.select', { 'aria-label': '视图' });
-  viewSelect.appendChild(h('option', { value: 'formats', textContent: '格式表' }));
-  viewSelect.appendChild(h('option', { value: 'ops', textContent: '操作表' }));
+  const viewSelect = h('select.select', { 'aria-label': t('视图') });
+  viewSelect.appendChild(h('option', { value: 'formats', textContent: t('格式表') }));
+  viewSelect.appendChild(h('option', { value: 'ops', textContent: t('操作表') }));
 
-  const opSelect = h('select.select', { 'aria-label': '操作筛选' });
-  opSelect.appendChild(h('option', { value: 'all', textContent: '全部操作' }));
+  const opSelect = h('select.select', { 'aria-label': t('操作筛选') });
+  opSelect.appendChild(h('option', { value: 'all', textContent: t('全部操作') }));
 
   const searchInput = h('input.input', {
     type: 'text',
-    placeholder: '搜索格式或操作',
-    'aria-label': '搜索格式或操作',
+    placeholder: t('搜索格式或操作'),
+    'aria-label': t('搜索格式或操作'),
   });
 
   const tableHost = h('div.tablewrap');
@@ -49,7 +50,7 @@ export async function mount(host, ctx) {
 
   const wrap = h('div.view-inner', { dataset: { view: 'formats' } },
     h('div.view-head', null,
-      h('h1.view-title', { textContent: '格式' }),
+      h('h1.view-title', { textContent: t('格式') }),
       h('div.view-rule')
     ),
     h('div.toolbar', null,
@@ -90,12 +91,12 @@ export async function mount(host, ctx) {
   function renderOpSelect() {
     const current = vs.op;
     clear(opSelect);
-    opSelect.appendChild(h('option', { value: 'all', textContent: '全部操作' }));
+    opSelect.appendChild(h('option', { value: 'all', textContent: t('全部操作') }));
     for (const row of vs.ops) {
       if (!row || !row.op) continue;
       opSelect.appendChild(h('option', {
         value: row.op,
-        textContent: `${row.label || row.op}（${row.kernelCount || 0}）`,
+        textContent: `${opText(row.op, row.label)} （${row.kernelCount || 0}）`,
       }));
     }
     const exists = Array.from(opSelect.options).some((o) => o.value === current);
@@ -103,9 +104,10 @@ export async function mount(host, ctx) {
     opSelect.value = vs.op;
   }
 
+  /** 操作名的显示名：按 op id 走 i18n（中文用主进程给的中文标签） */
   function opLabel(op) {
     const hit = vs.ops.find((row) => row && row.op === op);
-    return hit && hit.label ? hit.label : String(op || '');
+    return opText(op, hit && hit.label ? hit.label : String(op || ''));
   }
 
   /* --------------------------------------------------------------- 过滤 */
@@ -141,7 +143,7 @@ export async function mount(host, ctx) {
     if (vs.error) {
       tableHost.appendChild(h('div.error-state', null,
         h('div.error-state__msg', { textContent: vs.error.message || String(vs.error) }),
-        h('button.linkbtn', { type: 'button', on: { click: () => load() } }, h('span', { textContent: '重试' }))
+        h('button.linkbtn', { type: 'button', on: { click: () => load() } }, h('span', { textContent: t('重试') }))
       ));
       return;
     }
@@ -183,8 +185,8 @@ export async function mount(host, ctx) {
     const rows = visibleFormats();
     if (!rows.length) {
       tableHost.appendChild(h('div.empty', null,
-        h('div.empty__title', { textContent: '没有匹配的格式' }),
-        h('div.empty__text', { textContent: '换个操作或关键词再试。' })
+        h('div.empty__title', { textContent: t('没有匹配的格式') }),
+        h('div.empty__text', { textContent: t('换个操作或关键词再试。') })
       ));
       return;
     }
@@ -192,8 +194,8 @@ export async function mount(host, ctx) {
     for (const row of rows) {
       tbody.appendChild(makeRow(row.format, [
         h('td', null, h('span.mono', { textContent: formatLabel(row.format) })),
-        h('td', null, h('span.matrix-cell', { textContent: row.asInput.map(opLabel).join('、') || '—' })),
-        h('td', null, h('span.matrix-cell', { textContent: row.asOutput.map(opLabel).join('、') || '—' })),
+        h('td', null, h('span.matrix-cell', { textContent: row.asInput.map(opLabel).join(listSeparator()) || '—' })),
+        h('td', null, h('span.matrix-cell', { textContent: row.asOutput.map(opLabel).join(listSeparator()) || '—' })),
         h('td', { class: 'num mono', textContent: thousands(row.kernelCount || 0) }),
       ], () => {
         vs.selected = vs.selected === row.format ? '' : row.format;
@@ -208,10 +210,10 @@ export async function mount(host, ctx) {
         h('col', { style: { width: '14%' } })
       ),
       h('thead', null, h('tr', null,
-        h('th', { textContent: '格式' }),
-        h('th', { textContent: '可作输入的操作' }),
-        h('th', { textContent: '可作输出的操作' }),
-        h('th', { class: 'num', textContent: '内核数' })
+        h('th', { textContent: t('格式') }),
+        h('th', { textContent: t('可作输入的操作') }),
+        h('th', { textContent: t('可作输出的操作') }),
+        h('th', { class: 'num', textContent: t('内核数') })
       )),
       tbody
     ));
@@ -221,8 +223,8 @@ export async function mount(host, ctx) {
     const rows = visibleOps();
     if (!rows.length) {
       tableHost.appendChild(h('div.empty', null,
-        h('div.empty__title', { textContent: '没有匹配的操作' }),
-        h('div.empty__text', { textContent: '换个关键词再试。' })
+        h('div.empty__title', { textContent: t('没有匹配的操作') }),
+        h('div.empty__text', { textContent: t('换个关键词再试。') })
       ));
       return;
     }
@@ -231,7 +233,7 @@ export async function mount(host, ctx) {
       tbody.appendChild(makeRow(row.op, [
         h('td', null,
           h('div.kernel-name', null,
-            h('span', { textContent: row.label || row.op }),
+            h('span', { textContent: opText(row.op, row.label) }),
             h('span.kernel-name__id', { textContent: row.op })
           )
         ),
@@ -251,10 +253,10 @@ export async function mount(host, ctx) {
         h('col', { style: { width: '20%' } })
       ),
       h('thead', null, h('tr', null,
-        h('th', { textContent: '操作' }),
-        h('th', { class: 'num', textContent: '输入格式数' }),
-        h('th', { class: 'num', textContent: '输出格式数' }),
-        h('th', { class: 'num', textContent: '内核数' })
+        h('th', { textContent: t('操作') }),
+        h('th', { class: 'num', textContent: t('输入格式数') }),
+        h('th', { class: 'num', textContent: t('输出格式数') }),
+        h('th', { class: 'num', textContent: t('内核数') })
       )),
       tbody
     ));
@@ -264,14 +266,13 @@ export async function mount(host, ctx) {
   function renderDetail() {
     clear(detailHost);
     if (!vs.selected) {
-      detailHost.appendChild(h('div.field__hint', { textContent: '点选一行查看该格式 / 操作的可达关系。' }));
       return;
     }
 
     const tagFlow = (list, emptyText) => {
       const flow = h('div.tagflow');
       const values = Array.isArray(list) ? list : [];
-      if (!values.length) return h('div.field__hint', { textContent: emptyText });
+      if (!values.length) return h('div.note-line.dim', { textContent: emptyText });
       for (const value of values) flow.appendChild(h('span.tag', { textContent: formatLabel(value) }));
       return flow;
     };
@@ -287,18 +288,18 @@ export async function mount(host, ctx) {
       }
       targets.delete(row.format);
       detailHost.appendChild(h('div.section__title', null,
-        h('span', { textContent: '格式 ' }),
+        h('span', { textContent: t('格式 ') }),
         h('span.mono', { textContent: formatLabel(row.format) })
       ));
       detailHost.appendChild(h('div.kv', null,
-        h('div.kv__k', { textContent: '可作输入' }),
-        h('div.kv__v', { textContent: row.asInput.map(opLabel).join('、') || '—' }),
-        h('div.kv__k', { textContent: '可作输出' }),
-        h('div.kv__v', { textContent: row.asOutput.map(opLabel).join('、') || '—' }),
-        h('div.kv__k', { textContent: '涉及内核' }),
-        h('div.kv__v', { textContent: `${thousands(row.kernelCount || 0)} 个` })
+        h('div.kv__k', { textContent: t('可作输入') }),
+        h('div.kv__v', { textContent: row.asInput.map(opLabel).join(listSeparator()) || '—' }),
+        h('div.kv__k', { textContent: t('可作输出') }),
+        h('div.kv__v', { textContent: row.asOutput.map(opLabel).join(listSeparator()) || '—' }),
+        h('div.kv__k', { textContent: t('涉及内核') }),
+        h('div.kv__v', { textContent: t('{0} 个', { 0: thousands(row.kernelCount || 0) }) })
       ));
-      detailHost.appendChild(h('div.field__hint', { textContent: '作为输入时的可用目标格式（由参与的操作推出）：' }));
+      detailHost.appendChild(h('div.note-line', { textContent: t('作为输入时的可用目标格式（由参与的操作推出）：') }));
       detailHost.appendChild(tagFlow(Array.from(targets).sort(), '没有可推出的目标格式'));
       return;
     }
@@ -306,21 +307,21 @@ export async function mount(host, ctx) {
     const row = vs.ops.find((o) => o && o.op === vs.selected);
     if (!row) return;
     detailHost.appendChild(h('div.section__title', null,
-      h('span', { textContent: row.label || row.op }),
+      h('span', { textContent: opText(row.op, row.label) }),
       h('span.mono.dim', { textContent: row.op })
     ));
-    if (row.description) detailHost.appendChild(h('div.field__hint', { textContent: row.description }));
+    if (row.description) detailHost.appendChild(h('div.note-line.dim', { textContent: row.description }));
     detailHost.appendChild(h('div.kv', null,
-      h('div.kv__k', { textContent: '输入格式' }),
-      h('div.kv__v', { textContent: `${thousands((row.from || []).length)} 种` }),
-      h('div.kv__k', { textContent: '输出格式' }),
-      h('div.kv__v', { textContent: `${thousands((row.to || []).length)} 种` }),
-      h('div.kv__k', { textContent: '参与内核' }),
-      h('div.kv__v', { textContent: `${thousands(row.kernelCount || 0)} 个` })
+      h('div.kv__k', { textContent: t('输入格式') }),
+      h('div.kv__v', { textContent: t('{0} 种', { 0: thousands((row.from || []).length) }) }),
+      h('div.kv__k', { textContent: t('输出格式') }),
+      h('div.kv__v', { textContent: t('{0} 种', { 0: thousands((row.to || []).length) }) }),
+      h('div.kv__k', { textContent: t('参与内核') }),
+      h('div.kv__v', { textContent: t('{0} 个', { 0: thousands(row.kernelCount || 0) }) })
     ));
-    detailHost.appendChild(h('div.field__hint', { textContent: '输入格式：' }));
+    detailHost.appendChild(h('div.note-line', { textContent: t('输入格式：') }));
     detailHost.appendChild(tagFlow(row.from, '—'));
-    detailHost.appendChild(h('div.field__hint', { textContent: '输出格式：' }));
+    detailHost.appendChild(h('div.note-line', { textContent: t('输出格式：') }));
     detailHost.appendChild(tagFlow(row.to, '—'));
   }
 

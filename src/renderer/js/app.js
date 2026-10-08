@@ -21,7 +21,7 @@ import { state, pushLogEntry, replaceLogs, countsFromJobs } from './state.js';
 import { createLayout, NAV_ITEMS } from './layout.js';
 import { setPlatform, shortcut } from './format.js';
 import { icon } from './icons.js';
-import { t, getLocale, initLocale, translationCount, hasTranslation } from './i18n.js';
+import { t, getLocale, initLocale, translationCount, hasTranslation, statusText } from './i18n.js';
 
 /* ------------------------------------------------------------- 能力探测 */
 
@@ -109,7 +109,7 @@ async function patchSettings(patch, options = {}) {
     if (options.silent !== true) toast.success(t('设置已保存'));
     return next;
   } catch (err) {
-    reportError('保存设置失败', wrapError(err));
+    reportError(t('保存设置失败'), wrapError(err));
     return null;
   }
 }
@@ -247,7 +247,7 @@ async function loadKernels({ silent = false } = {}) {
     });
     return true;
   } catch (err) {
-    if (!silent) reportError('读取内核信息失败', wrapError(err));
+    if (!silent) reportError(t('读取内核信息失败'), wrapError(err));
     state.set({
       kernelsTotal: 0,
       kernelsReady: 0,
@@ -285,7 +285,7 @@ async function refreshKernels({ announce = true } = {}) {
   if (refreshPromise) return refreshPromise;
 
   refreshPromise = (async () => {
-    const tip = announce ? toast.info(t('正在重新扫描内核…'), { text: '会重新探测每个内核的运行时依赖', ttl: 0 }) : null;
+    const tip = announce ? toast.info(t('正在重新扫描内核…'), { text: t('会重新探测每个内核的运行时依赖'), ttl: 0 }) : null;
     try {
       const res = await bridge.kernels.refresh();
       state.set({
@@ -295,10 +295,10 @@ async function refreshKernels({ announce = true } = {}) {
       await loadKernels({ silent: true });
       // 内核集合变了 → 可用格式也随之改变，缓存要一起刷新
       await loadFormatsCache();
-      if (announce) toast.success(t('内核已刷新'), { text: `可用 ${state.pick('kernelsReady')} / 共 ${state.pick('kernelsTotal')}` });
+      if (announce) toast.success(t('内核已刷新'), { text: t('可用 {0} / 共 {1}', { 0: state.pick('kernelsReady'), 1: state.pick('kernelsTotal') }) });
       return true;
     } catch (err) {
-      reportError('刷新内核失败', wrapError(err));
+      reportError(t('刷新内核失败'), wrapError(err));
       return false;
     } finally {
       if (tip) tip.close();
@@ -319,7 +319,7 @@ async function loadQueue({ silent = false } = {}) {
     applyJobsSnapshot((res && res.jobs) || [], res && res.counts, res && res.paused);
     return true;
   } catch (err) {
-    if (!silent) reportError('读取队列失败', wrapError(err));
+    if (!silent) reportError(t('读取队列失败'), wrapError(err));
     return false;
   }
 }
@@ -331,7 +331,7 @@ async function loadLogs({ silent = false } = {}) {
     replaceLogs((res && res.logs) || []);
     return true;
   } catch (err) {
-    if (!silent) reportError('读取日志失败', wrapError(err));
+    if (!silent) reportError(t('读取日志失败'), wrapError(err));
     return false;
   }
 }
@@ -367,20 +367,20 @@ function applyJobUpdate(job) {
   const terminal = job.state === 'done' || job.state === 'failed' || job.state === 'cancelled';
   if (terminal && prevState !== job.state) {
     if (job.state === 'done') {
-      toast.success(`转换完成：${job.outputName || job.sourceName || ''}`, {
+      toast.success(t('转换完成：{0}', { 0: job.outputName || job.sourceName || '' }), {
         text: `${job.sourceFormat || '?'} → ${job.targetFormat || '?'} · ${job.size || ''} · ${job.kernelName || job.kernelUsed || ''}`,
         actions: job.output ? [{
           label: t('打开产物'),
-          run: () => Promise.resolve(bridge.fs.openPath(job.output)).catch((err) => reportError('打开产物失败', wrapError(err))),
+          run: () => Promise.resolve(bridge.fs.openPath(job.output)).catch((err) => reportError(t('打开产物失败'), wrapError(err))),
         }] : undefined,
       });
     } else if (job.state === 'failed') {
-      toast.error(`转换失败：${job.sourceName || job.id}`, {
+      toast.error(t('转换失败：{0}', { 0: job.sourceName || job.id }), {
         text: (job.error && job.error.message) || '内核返回失败',
         actions: [
           {
             label: t('重试'),
-            run: () => Promise.resolve(bridge.queue.retry(job.id)).catch((err) => reportError('重试失败', wrapError(err))),
+            run: () => Promise.resolve(bridge.queue.retry(job.id)).catch((err) => reportError(t('重试失败'), wrapError(err))),
           },
           job.error && job.error.detail
             ? { label: t('详情'), keepOpen: true, run: () => modal.detail('失败详情', job.error.detail) }
@@ -402,13 +402,13 @@ async function pickFiles({ navigateAfter = true } = {}) {
     const { added, skipped } = addPendingFiles(files);
     if (added) {
       if (navigateAfter) navigate('#/convert');
-      toast.success(`已添加 ${added} 个文件`, skipped ? { text: `${skipped} 个重复文件已忽略` } : undefined);
+      toast.success(t('已添加 {0} 个文件', { 0: added }), skipped ? { text: t('{0} 个重复文件已忽略', { 0: skipped }) } : undefined);
     } else {
-      toast.warn(t('没有新增文件'), { text: skipped ? `${skipped} 个文件已在列表中` : '所选内容不是文件' });
+      toast.warn(t('没有新增文件'), { text: skipped ? t('{0} 个文件已在列表中', { 0: skipped }) : '所选内容不是文件' });
     }
     return added;
   } catch (err) {
-    reportError('选择文件失败', wrapError(err));
+    reportError(t('选择文件失败'), wrapError(err));
     return 0;
   }
 }
@@ -421,7 +421,7 @@ async function pickFolder({ navigateAfter = true } = {}) {
     if (!folder) return 0;
     return expandPaths([folder], { navigateAfter, label: t('目录') });
   } catch (err) {
-    reportError('添加目录失败', wrapError(err));
+    reportError(t('添加目录失败'), wrapError(err));
     return 0;
   }
 }
@@ -434,23 +434,23 @@ async function expandPaths(paths, opts = {}) {
     const res = await bridge.fs.expand(list);
     const files = (res && res.files) || [];
     if (!files.length) {
-      if (!opts.silent) toast.warn(t('没有可用的文件'), { text: '所选路径下没有可识别的文件（或全部为隐藏项）' });
+      if (!opts.silent) toast.warn(t('没有可用的文件'), { text: t('所选路径下没有可识别的文件（或全部为隐藏项）') });
       return 0;
     }
     const { added, skipped } = addPendingFiles(files);
     if (added && opts.navigateAfter !== false) navigate('#/convert');
     if (!opts.silent) {
       if (added) {
-        toast.success(`已添加 ${added} 个文件`, {
-          text: [skipped ? `${skipped} 个重复已忽略` : '', `共 ${files.length} 个文件`].filter(Boolean).join(' · '),
+        toast.success(t('已添加 {0} 个文件', { 0: added }), {
+          text: [skipped ? t('{0} 个重复已忽略', { 0: skipped }) : '', t('共 {0} 个文件', { 0: files.length })].filter(Boolean).join(' · '),
         });
       } else {
-        toast.info(t('文件已在列表中'), { text: `${skipped} 个文件此前已加入` });
+        toast.info(t('文件已在列表中'), { text: t('{0} 个文件此前已加入', { 0: skipped }) });
       }
     }
     return added;
   } catch (err) {
-    reportError(`展开${opts.label || '路径'}失败`, wrapError(err));
+    reportError(t('展开{0}失败', { 0: opts.label || '路径' }), wrapError(err));
     return 0;
   }
 }
@@ -578,8 +578,8 @@ async function renderRoute() {
   } catch (err) {
     if (token !== routeToken) return false;
     clear(host);
-    host.appendChild(buildViewError(viewId, wrapError(err, `加载视图「${viewId}」失败`)));
-    reportError('视图加载失败', wrapError(err));
+    host.appendChild(buildViewError(viewId, wrapError(err, t('加载视图「{0}」失败', { 0: viewId }))));
+    reportError(t('视图加载失败'), wrapError(err));
     return false;
   }
   // 动态 import 期间可能又有新的导航，本次渲染作废
@@ -588,7 +588,7 @@ async function renderRoute() {
   const mount = mod && (mod.mount || (mod.default && mod.default.mount));
   if (typeof mount !== 'function') {
     clear(host);
-    host.appendChild(buildViewError(viewId, new Error(`视图模块 ${viewId}.js 没有导出 mount()`)));
+    host.appendChild(buildViewError(viewId, new Error(t('视图模块 {0}.js 没有导出 mount()', { 0: viewId }))));
     return false;
   }
 
@@ -612,8 +612,8 @@ async function renderRoute() {
   } catch (err) {
     if (token !== routeToken) return false;
     clear(host);
-    host.appendChild(buildViewError(viewId, wrapError(err, `渲染视图「${viewId}」失败`)));
-    reportError('视图渲染失败', wrapError(err));
+    host.appendChild(buildViewError(viewId, wrapError(err, t('渲染视图「{0}」失败', { 0: viewId }))));
+    reportError(t('视图渲染失败'), wrapError(err));
   }
 
   if (mounted && pendingAction) {
@@ -642,7 +642,7 @@ function buildViewError(viewId, err) {
     h('div.error-state', null,
       icon('error', { size: 16 }),
       h('div.error-state__msg', null,
-        h('div', { textContent: `视图「${viewId}」无法显示` }),
+        h('div', { textContent: t('视图「{0}」无法显示', { 0: viewId }) }),
         h('div', { textContent: err.message || String(err) })
       ),
       h('button.linkbtn', { type: 'button', on: { click: () => renderRoute() } }, h('span', { textContent: t('重试') })),
@@ -679,7 +679,7 @@ function bindBridgeEvents() {
       pushLog({
         at: Date.now(),
         level: 'error',
-        message: `作业 ${job.id} 退出码 ${outcome.exit_code}：${String(outcome.stderr).slice(0, 400)}`,
+        message: t('作业 {0} 退出码 {1}：{2}', { 0: job.id, 1: outcome.exit_code, 2: String(outcome.stderr).slice(0, 400) }),
         jobId: job.id,
       });
     }
@@ -689,9 +689,9 @@ function bindBridgeEvents() {
     state.set({ queueCounts: counts || countsFromJobs(state.pick('jobs')) });
     const c = counts || {};
     if (c.total) {
-      const bits = [`完成 ${c.done || 0}`];
-      if (c.failed) bits.push(`失败 ${c.failed}`);
-      if (c.cancelled) bits.push(`取消 ${c.cancelled}`);
+      const bits = [t('完成 {0}', { 0: c.done || 0 })];
+      if (c.failed) bits.push(t('失败 {0}', { 0: c.failed }));
+      if (c.cancelled) bits.push(t('取消 {0}', { 0: c.cancelled }));
       toast.info(t('队列已空闲'), { text: bits.join(' · ') });
     }
   }));
@@ -788,7 +788,7 @@ function bindGlobalDrop() {
     event.preventDefault();
     const paths = collectDropPaths(event);
     if (!paths.length) {
-      toast.warn(t('没有识别到文件路径'), { text: '请改用「添加文件」按钮，或把文件拖到待转换列表上。' });
+      toast.warn(t('没有识别到文件路径'), { text: t('请改用「添加文件」按钮，或把文件拖到待转换列表上。') });
       return;
     }
     await expandPaths(paths, { label: t('拖入内容') });
@@ -819,7 +819,7 @@ function runAction(name, payload) {
     toast.warn(t('该操作当前不可用'), {
       text: name === 'start-convert'
         ? '请先切换到转换视图并选择文件与目标格式。'
-        : `没有视图注册动作「${name}」。`,
+        : t('没有视图注册动作「{0}」。', { 0: name }),
     });
     return false;
   }
@@ -827,7 +827,7 @@ function runAction(name, payload) {
     fn(payload);
     return true;
   } catch (err) {
-    reportError('执行操作失败', wrapError(err));
+    reportError(t('执行操作失败'), wrapError(err));
     return false;
   }
 }
@@ -886,7 +886,7 @@ function bindHotkeys() {
     try {
       entry.run();
     } catch (err) {
-      reportError(`快捷键「${entry.label}」执行失败`, wrapError(err));
+      reportError(t('快捷键「{0}」执行失败', { 0: entry.label }), wrapError(err));
     }
   });
 }
@@ -945,7 +945,7 @@ function buildCommands() {
   });
   commands.push({
     id: 'act:theme', group: '操作',
-    title: `切换到${(state.pick('settings') || {}).theme === 'dark' ? '浅色' : '深色'}主题`,
+    title: t('切换到{0}主题', { 0: (state.pick('settings') || {}).theme === 'dark' ? '浅色' : '深色' }),
     subtitle: t('主题会写入设置并持久化'), keywords: 'theme dark light 主题', run: () => toggleTheme(),
   });
   commands.push({
@@ -964,7 +964,7 @@ function buildCommands() {
         const report = await bridge.doctor();
         await modal.json('自检结果（doctor）', report, { subtitle: `CKP ${report.protocol || '—'}` });
       } catch (err) {
-        reportError('自检失败', wrapError(err));
+        reportError(t('自检失败'), wrapError(err));
       }
     },
   });
@@ -978,8 +978,8 @@ function buildCommands() {
     commands.push({
       id: `op:${op.op}`,
       group: '操作类型',
-      title: `切到「${op.label || op.op}」`,
-      subtitle: `${op.op} · ${op.kernelCount || 0} 个内核`,
+      title: t('切到「{0}」', { 0: op.label || op.op }),
+      subtitle: t('{0} · {1} 个内核', { 0: op.op, 1: op.kernelCount || 0 }),
       keywords: `op ${op.op} ${op.label || ''}`,
       run: () => navigate('#/convert', { name: 'set-op', payload: op.op }),
     });
@@ -990,7 +990,7 @@ function buildCommands() {
       id: `kernel:${kernel.id}`,
       group: '内核',
       title: kernel.name || kernel.id,
-      subtitle: `${kernel.id} · ${kernel.statusLabel || kernel.status}`,
+      subtitle: `${kernel.id} · ${statusText(kernel.status, kernel.statusLabel)}`,
       keywords: `kernel ${kernel.id} ${(kernel.tags || []).join(' ')} ${(kernel.inputFormats || []).join(' ')} ${(kernel.outputFormats || []).join(' ')}`,
       run: () => navigate('#/plugins', { name: 'focus-kernel', payload: kernel.id }),
     });
@@ -1002,7 +1002,7 @@ function buildCommands() {
         id: `format:${row.format}`,
         group: '格式',
         title: String(row.format || '').toUpperCase(),
-        subtitle: `${row.kernelCount} 个内核`,
+        subtitle: t('{0} 个内核', { 0: row.kernelCount }),
         keywords: `format ${row.format}`,
         run: () => navigate('#/formats', { name: 'focus-format', payload: row.format }),
       });
@@ -1015,14 +1015,14 @@ function buildCommands() {
 /** 打开路径（目录/文件），失败必上报 */
 async function openPathSafe(path, label) {
   if (!path) {
-    toast.warn(`没有可打开的${label || '路径'}`, { text: '该路径尚未设置。' });
+    toast.warn(t('没有可打开的{0}', { 0: label || '路径' }), { text: t('该路径尚未设置。') });
     return;
   }
   try {
     const res = await bridge.fs.openPath(path);
-    if (res && res.ok === false) toast.warn(`打开${label || '路径'}失败`, { text: String(path) });
+    if (res && res.ok === false) toast.warn(t('打开{0}失败', { 0: label || '路径' }), { text: String(path) });
   } catch (err) {
-    reportError(`打开${label || '路径'}失败`, wrapError(err));
+    reportError(t('打开{0}失败', { 0: label || '路径' }), wrapError(err));
   }
 }
 
@@ -1033,7 +1033,7 @@ async function clearLogs() {
     replaceLogs([]);
     toast.success(t('日志已清空'));
   } catch (err) {
-    reportError('清空日志失败', wrapError(err));
+    reportError(t('清空日志失败'), wrapError(err));
   }
 }
 
@@ -1362,7 +1362,7 @@ async function main() {
     commands: buildCommands,
     currentTheme: () => document.documentElement.getAttribute('data-theme') || 'light',
     toggleTheme,
-    reportError: (err) => reportError('界面操作失败', wrapError(err)),
+    reportError: (err) => reportError(t('界面操作失败'), wrapError(err)),
   });
   layout.mount();
 
@@ -1430,7 +1430,7 @@ main().catch((err) => {
     host.appendChild(h('div.view-inner', null,
       h('div.error-state', null,
         icon('error', { size: 16 }),
-        h('div.error-state__msg', { textContent: `应用启动失败：${err && err.message ? err.message : String(err)}` }),
+        h('div.error-state__msg', { textContent: t('应用启动失败：{0}', { 0: err && err.message ? err.message : String(err) }) }),
         h('button.linkbtn', { type: 'button', on: { click: () => location.reload() } }, h('span', { textContent: t('重新加载') }))
       )
     ));

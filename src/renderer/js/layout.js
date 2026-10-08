@@ -649,7 +649,7 @@ export function copyButton(value, label = '复制', opts = {}) {
     onClick: async () => {
       const text = typeof value === 'function' ? value() : value;
       const ok = await copyText(text);
-      if (ok) toast.success(t('已复制'), { text: `${String(text || '').length} 个字符` });
+      if (ok) toast.success(t('已复制'), { text: t('{0} 个字符', { 0: String(text || '').length }) });
       else toast.warn(t('复制失败'), '当前环境不允许访问剪贴板，请手动选择文本');
     },
   });

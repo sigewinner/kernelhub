@@ -15,6 +15,7 @@ import { h, clear, on, iconAction } from '../dom.js';
 import { icon } from '../icons.js';
 import { statusBadge, jobStateMeta } from '../layout.js';
 import { elapsed, percent, thousands, formatLabel, clockTime } from '../format.js';
+import { t } from '../i18n.js';
 
 export async function mount(host, ctx) {
   const { store } = ctx;
@@ -28,23 +29,23 @@ export async function mount(host, ctx) {
   const pauseBtn = h('button.btn', { type: 'button', on: { click: () => togglePause() } });
   const clearBtn = h('button.btn', {
     type: 'button',
-    title: '移除已完成 / 已取消 / 失败的作业记录',
+    title: t('移除已完成 / 已取消 / 失败的作业记录'),
     on: { click: () => clearFinished() },
-  }, h('span', { textContent: '清除已完成' }));
+  }, h('span', { textContent: t('清除已完成') }));
   const cancelAllBtn = h('button.btn.btn--danger', {
     type: 'button',
-    title: '取消所有排队中与进行中的作业',
+    title: t('取消所有排队中与进行中的作业'),
     on: { click: () => cancelAll() },
-  }, h('span', { textContent: '全部取消' }));
+  }, h('span', { textContent: t('全部取消') }));
 
-  const parallelSelect = h('select.select', { 'aria-label': '并发上限' });
+  const parallelSelect = h('select.select', { 'aria-label': t('并发上限') });
   for (let n = 1; n <= 8; n += 1) parallelSelect.appendChild(h('option', { value: String(n), textContent: String(n) }));
 
   const tableHost = h('div');
 
   const wrap = h('div.view-inner', { dataset: { view: 'batch' } },
     h('div.view-head', null,
-      h('h1.view-title', { textContent: '队列' }),
+      h('h1.view-title', { textContent: t('队列') }),
       h('div.view-rule')
     ),
     h('div.toolbar', null,
@@ -52,7 +53,7 @@ export async function mount(host, ctx) {
       clearBtn,
       cancelAllBtn,
       h('div.toolbar__right', null,
-        h('label.label', { style: { marginBottom: '0' }, textContent: '并发' }),
+        h('label.label', { style: { marginBottom: '0' }, textContent: t('并发') }),
         h('div.selectwrap', { style: { width: '80px' } }, parallelSelect)
       )
     ),
@@ -79,16 +80,16 @@ export async function mount(host, ctx) {
     const counts = store.pick('queueCounts') || {};
     const finished = Number(counts.done || 0) + Number(counts.failed || 0) + Number(counts.cancelled || 0);
     if (!finished) {
-      ctx.toast.info('没有可清除的已完成作业');
+      ctx.toast.info(t('没有可清除的已完成作业'));
       return;
     }
     try {
       await window.khs.queue.clear(true);
       expanded.clear();
       logCache.clear();
-      ctx.toast.success(`已清除 ${finished} 条作业记录`);
+      ctx.toast.success(t('已清除 {0} 条作业记录', { 0: finished }));
     } catch (err) {
-      ctx.reportError('清除已完成作业失败', ctx.wrapError(err));
+      ctx.reportError(t('清除已完成作业失败'), ctx.wrapError(err));
     }
   }
 
@@ -96,15 +97,15 @@ export async function mount(host, ctx) {
     const counts = store.pick('queueCounts') || {};
     const active = Number(counts.queued || 0) + Number(counts.running || 0);
     if (!active) {
-      ctx.toast.info('当前没有进行中的作业');
+      ctx.toast.info(t('当前没有进行中的作业'));
       return;
     }
-    if (!(await ctx.modal.confirm(`取消全部 ${active} 个排队中 / 进行中的作业？`, { okLabel: '全部取消', danger: true }))) return;
+    if (!(await ctx.modal.confirm(t('取消全部 {0} 个排队中 / 进行中的作业？', { 0: active }), { okLabel: t('全部取消'), danger: true }))) return;
     try {
       await window.khs.queue.cancelAll();
-      ctx.toast.success('已请求取消全部作业');
+      ctx.toast.success(t('已请求取消全部作业'));
     } catch (err) {
-      ctx.reportError('取消全部作业失败', ctx.wrapError(err));
+      ctx.reportError(t('取消全部作业失败'), ctx.wrapError(err));
     }
   }
 
@@ -112,23 +113,23 @@ export async function mount(host, ctx) {
     try {
       await window.khs.queue.cancel(job.id);
     } catch (err) {
-      ctx.reportError('取消作业失败', ctx.wrapError(err));
+      ctx.reportError(t('取消作业失败'), ctx.wrapError(err));
     }
   }
 
   async function retryOne(job) {
     try {
       await window.khs.queue.retry(job.id);
-      ctx.toast.info('已重新排队', { text: job.sourceName || job.id });
+      ctx.toast.info(t('已重新排队'), { text: job.sourceName || job.id });
     } catch (err) {
-      ctx.reportError('重试作业失败', ctx.wrapError(err));
+      ctx.reportError(t('重试作业失败'), ctx.wrapError(err));
     }
   }
 
   async function openArtifact(job) {
     const target = job.output || (Array.isArray(job.artifacts) && job.artifacts[0] ? job.artifacts[0].path : '');
     if (!target) {
-      ctx.toast.warn('该作业没有产物路径');
+      ctx.toast.warn(t('该作业没有产物路径'));
       return;
     }
     await ctx.openPathSafe(target, '产物');
@@ -147,7 +148,7 @@ export async function mount(host, ctx) {
       const res = await window.khs.queue.jobLogs(job.id);
       logCache.set(job.id, (res && res.logs) || []);
     } catch (err) {
-      logCache.set(job.id, [{ at: Date.now(), level: 'error', message: `读取作业日志失败：${err && err.message ? err.message : String(err)}` }]);
+      logCache.set(job.id, [{ at: Date.now(), level: 'error', message: t('读取作业日志失败：{0}', { 0: err && err.message ? err.message : String(err) }) }]);
     }
     render();
   }
@@ -156,8 +157,8 @@ export async function mount(host, ctx) {
     const n = Number(parallelSelect.value) || 1;
     Promise.resolve(window.khs.queue.setParallel(n))
       .then(() => ctx.patchSettings({ maxParallel: n }, { silent: true }))
-      .then(() => ctx.toast.success(`并发上限已设为 ${n}`))
-      .catch((err) => ctx.reportError('设置并发失败', ctx.wrapError(err)));
+      .then(() => ctx.toast.success(t('并发上限已设为 {0}', { 0: n })))
+      .catch((err) => ctx.reportError(t('设置并发失败'), ctx.wrapError(err)));
   }
 
   /* --------------------------------------------------------------- 渲染 */
@@ -190,7 +191,7 @@ export async function mount(host, ctx) {
     // 暂停/继续按钮文案随状态变化
     const paused = Boolean(store.pick('queuePaused'));
     clear(pauseBtn);
-    pauseBtn.appendChild(h('span', { textContent: paused ? '继续' : '暂停' }));
+    pauseBtn.appendChild(h('span', { textContent: paused ? t('继续') : t('暂停') }));
     pauseBtn.title = paused ? '继续执行队列' : '暂停调度新作业';
 
     // 并发选择器始终跟随设置（设置页也能改它）
@@ -200,13 +201,13 @@ export async function mount(host, ctx) {
     clear(tableHost);
     if (!jobs.length) {
       tableHost.appendChild(h('div.empty', null,
-        h('div.empty__title', { textContent: '还没有作业' }),
-        h('div.empty__text', { textContent: '在「转换」里添加文件并开始转换，作业会按并发度在这里排队执行。' }),
+        h('div.empty__title', { textContent: t('还没有作业') }),
+        h('div.empty__text', { textContent: t('在「转换」里添加文件并开始转换，作业会按并发度在这里排队执行。') }),
         h('div.empty__actions', null,
           h('button.btn.btn--primary', {
             type: 'button',
             on: { click: () => ctx.pickFiles() },
-          }, h('span', { textContent: '添加文件' }))
+          }, h('span', { textContent: t('添加文件') }))
         )
       ));
     } else {
@@ -243,9 +244,9 @@ export async function mount(host, ctx) {
           ),
           h('td', null,
             h('div.rowactions', null,
-              iconButton('close', '取消该作业', () => cancelOne(job), !canCancel),
-              iconButton('retry', '重试该作业', () => retryOne(job), !canRetry),
-              iconButton('external', '在资源管理器中定位产物', () => openArtifact(job), job.state !== 'done' || !job.output),
+              iconButton('close', t('取消该作业'), () => cancelOne(job), !canCancel),
+              iconButton('retry', t('重试该作业'), () => retryOne(job), !canRetry),
+              iconButton('external', t('在资源管理器中定位产物'), () => openArtifact(job), job.state !== 'done' || !job.output),
               iconButton(isOpen ? 'chevronDown' : 'chevronRight', isOpen ? '收起日志' : '展开日志', () => toggleLog(job), false)
             )
           )
@@ -286,13 +287,13 @@ export async function mount(host, ctx) {
           h('col', { style: { width: '12%' } })
         ),
         h('thead', null, h('tr', null,
-          h('th', { textContent: '状态' }),
-          h('th', { textContent: '文件 → 目标' }),
-          h('th', { class: 'num', textContent: '大小' }),
-          h('th', { textContent: '内核' }),
-          h('th', { class: 'num', textContent: '耗时' }),
-          h('th', { textContent: '进度' }),
-          h('th', { class: 'num', textContent: '操作' })
+          h('th', { textContent: t('状态') }),
+          h('th', { textContent: t('文件 → 目标') }),
+          h('th', { class: 'num', textContent: t('大小') }),
+          h('th', { textContent: t('内核') }),
+          h('th', { class: 'num', textContent: t('耗时') }),
+          h('th', { textContent: t('进度') }),
+          h('th', { class: 'num', textContent: t('操作') })
         )),
         tbody
       ));
@@ -300,12 +301,12 @@ export async function mount(host, ctx) {
 
     // 实时信息推到状态栏右下角（2.0.4 起不再各视图自己放一行 .footline）
     ctx.setStatusInfo([
-      `${thousands(jobs.length)} 个作业`,
-      `待处理 ${thousands(counts.queued || 0)}`,
-      `运行 ${thousands(counts.running || 0)}`,
-      `已完成 ${thousands(counts.done || 0)}`,
-      `失败 ${thousands(counts.failed || 0)}`,
-      paused ? { text: '队列已暂停', tone: 'warn' } : null,
+      t('{0} 个作业', { 0: thousands(jobs.length) }),
+      t('待处理 {0}', { 0: thousands(counts.queued || 0) }),
+      t('运行 {0}', { 0: thousands(counts.running || 0) }),
+      t('已完成 {0}', { 0: thousands(counts.done || 0) }),
+      t('失败 {0}', { 0: thousands(counts.failed || 0) }),
+      paused ? { text: t('队列已暂停'), tone: 'warn' } : null,
     ]);
   }
 

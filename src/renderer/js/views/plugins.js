@@ -18,23 +18,24 @@ import { h, clear, on, iconAction } from '../dom.js';
 import { icon } from '../icons.js';
 import { statusBadge } from '../layout.js';
 import { createSegmented } from '../segmented.js';
+import { t, statusText } from '../i18n.js';
 
 /** 插件安装状态 → 文案与色调 */
 const STATE_META = {
-  installed: { label: '已安装', tone: 'ok' },
-  'update-available': { label: '可更新', tone: 'accent' },
-  modified: { label: '内容已改动', tone: 'warn' },
-  'not-installed': { label: '未安装', tone: 'mute' },
-  'local-only': { label: '非官方来源', tone: 'warn' },
+  installed: { label: t('已安装'), tone: 'ok' },
+  'update-available': { label: t('可更新'), tone: 'accent' },
+  modified: { label: t('内容已改动'), tone: 'warn' },
+  'not-installed': { label: t('未安装'), tone: 'mute' },
+  'local-only': { label: t('非官方来源'), tone: 'warn' },
 };
 
 const STATE_FILTERS = [
-  { value: 'all', label: '全部状态' },
-  { value: 'installed', label: '已安装' },
-  { value: 'not-installed', label: '未安装' },
-  { value: 'update-available', label: '可更新' },
-  { value: 'modified', label: '内容已改动' },
-  { value: 'local-only', label: '非官方来源' },
+  { value: 'all', label: t('全部状态') },
+  { value: 'installed', label: t('已安装') },
+  { value: 'not-installed', label: t('未安装') },
+  { value: 'update-available', label: t('可更新') },
+  { value: 'modified', label: t('内容已改动') },
+  { value: 'local-only', label: t('非官方来源') },
 ];
 
 function humanMB(bytes) {
@@ -57,11 +58,11 @@ export async function mount(host, ctx) {
 
   // 分段选项卡：指示条会滑过去，而不是两个按钮硬切背景色
   const tabBar = createSegmented({
-    ariaLabel: '插件视图',
+    ariaLabel: t('插件视图'),
     value: 'installed',
     items: [
-      { value: 'installed', label: '已安装', title: '查看已安装的插件（等于原来「内核」页的内容）' },
-      { value: 'catalog', label: '可安装', title: '从插件仓库安装新插件' },
+      { value: 'installed', label: t('已安装'), title: t('查看已安装的插件（等于原来「内核」页的内容）') },
+      { value: 'catalog', label: t('可安装'), title: t('从插件仓库安装新插件') },
     ],
     onChange: (next) => switchTab(next),
   });
@@ -72,7 +73,7 @@ export async function mount(host, ctx) {
 
   const wrap = h('div.view-inner', { dataset: { view: 'plugins' } },
     h('div.view-head', null,
-      h('h1.view-title', { textContent: '插件' }),
+      h('h1.view-title', { textContent: t('插件') }),
       h('div.view-rule')
     ),
     h('div.toolbar', null, tabBar.el),
@@ -86,24 +87,24 @@ export async function mount(host, ctx) {
 
   const searchInput = h('input.input', {
     type: 'text',
-    placeholder: '搜索插件名 / id / 格式',
-    'aria-label': '搜索插件',
+    placeholder: t('搜索插件名 / id / 格式'),
+    'aria-label': t('搜索插件'),
   });
 
-  const stateSelect = h('select.select', { 'aria-label': '插件状态' });
+  const stateSelect = h('select.select', { 'aria-label': t('插件状态') });
   for (const item of STATE_FILTERS) stateSelect.appendChild(h('option', { value: item.value, textContent: item.label }));
 
   const refreshBtn = h('button.btn', {
     type: 'button',
-    title: '重新拉取插件目录（catalog.json）',
+    title: t('重新拉取插件目录（catalog.json）'),
     on: { click: () => reload(true) },
-  }, h('span', { textContent: '刷新目录' }));
+  }, h('span', { textContent: t('刷新目录') }));
 
   const openDirBtn = h('button.btn', {
     type: 'button',
-    title: '在资源管理器中打开插件目录',
+    title: t('在资源管理器中打开插件目录'),
     on: { click: () => openDir() },
-  }, h('span', { textContent: '打开插件目录' }));
+  }, h('span', { textContent: t('打开插件目录') }));
 
   const infoStrip = h('div.strip');
   const tableHost = h('div');
@@ -186,14 +187,14 @@ export async function mount(host, ctx) {
     if (data.error) {
       infoStrip.hidden = false;
       infoStrip.className = 'strip strip--warn';
-      infoStrip.appendChild(h('span', { textContent: `目录拉取失败：${data.error}（显示的是本地缓存）` }));
+      infoStrip.appendChild(h('span', { textContent: t('目录拉取失败：{0}（显示的是本地缓存）', { 0: data.error }) }));
       return;
     }
     if (data.source === 'cache') {
       infoStrip.hidden = false;
       infoStrip.className = 'strip strip--warn';
       const bits = ['用的是本地缓存的目录——点「刷新目录」可重新拉取'];
-      if (data.catalog && data.catalog.updated) bits.push(`缓存更新于 ${data.catalog.updated}`);
+      if (data.catalog && data.catalog.updated) bits.push(t('缓存更新于 {0}', { 0: data.catalog.updated }));
       infoStrip.appendChild(h('span', { textContent: bits.join('　·　') }));
     }
   }
@@ -202,11 +203,11 @@ export async function mount(host, ctx) {
   function publishCatalogStatus(filteredCount) {
     if (!data) return;
     const bits = [
-      `已安装 ${data.installedCount} / 共 ${data.plugins.length} 个插件`,
-      `当前显示 ${Number.isFinite(filteredCount) ? filteredCount : data.plugins.length} 个`,
-      `下载方式 ${data.mode === 'git' ? 'git 稀疏克隆' : 'HTTPS 多连接'}`,
+      t('已安装 {0} / 共 {1} 个插件', { 0: data.installedCount, 1: data.plugins.length }),
+      t('当前显示 {0} 个', { 0: Number.isFinite(filteredCount) ? filteredCount : data.plugins.length }),
+      t('下载方式 {0}', { 0: data.mode === 'git' ? 'git 稀疏克隆' : 'HTTPS 多连接' }),
     ];
-    if (data.catalog && data.catalog.updated) bits.push(`目录更新于 ${data.catalog.updated}`);
+    if (data.catalog && data.catalog.updated) bits.push(t('目录更新于 {0}', { 0: data.catalog.updated }));
     ctx.setStatusInfo(bits);
   }
 
@@ -269,8 +270,8 @@ export async function mount(host, ctx) {
   function dependencyText(p) {
     const bits = [];
     if (p.requires && p.requires.length) bits.push(`Python: ${p.requires.join(', ')}`);
-    if (p.vendorSize) bits.push(`自带依赖 ${humanMB(p.vendorSize)}`);
-    if (p.external && p.external.length) bits.push(`需外部程序: ${p.external.join(' / ')}`);
+    if (p.vendorSize) bits.push(t('自带依赖 {0}', { 0: humanMB(p.vendorSize) }));
+    if (p.external && p.external.length) bits.push(t('需外部程序: {0}', { 0: p.external.join(' / ') }));
     return bits.join('；') || '无额外依赖';
   }
 
@@ -281,15 +282,15 @@ export async function mount(host, ctx) {
 
     if (!data) {
       tableHost.appendChild(h('div.empty', null,
-        h('div.empty__title', { textContent: '正在读取插件目录…' }),
-        h('div.empty__text', { textContent: '首次会自动从 GitHub 拉取 catalog.json。' })
+        h('div.empty__title', { textContent: t('正在读取插件目录…') }),
+        h('div.empty__text', { textContent: t('首次会自动从 GitHub 拉取 catalog.json。') })
       ));
       return;
     }
     if (!list.length) {
       tableHost.appendChild(h('div.empty', null,
-        h('div.empty__title', { textContent: '没有匹配的插件' }),
-        h('div.empty__text', { textContent: '换个关键词或状态筛选再试。' })
+        h('div.empty__title', { textContent: t('没有匹配的插件') }),
+        h('div.empty__text', { textContent: t('换个关键词或状态筛选再试。') })
       ));
       return;
     }
@@ -315,7 +316,7 @@ export async function mount(host, ctx) {
         h('td', { class: 'truncate' },
           k
             ? h('span', {
-                textContent: `${k.statusLabel || k.status}${k.detail && k.status !== 'ready' ? '：' + k.detail : ''}`,
+                textContent: `${statusText(k.status, k.statusLabel)}${k.detail && k.status !== 'ready' ? '：' + k.detail : ''}`,
                 title: k.detail || k.engineNote || '',
               })
             : h('span.dim', { textContent: '—' })
@@ -325,15 +326,15 @@ export async function mount(host, ctx) {
         h('td', { class: 'num mono', textContent: String(p.capabilities || 0) }),
         h('td', null,
           h('div.rowactions', null,
-            iconButton('download', canInstall ? `安装 ${p.id}（约 ${humanMB(p.size)}）` : '不在官方目录中，无法安装',
+            iconButton('download', canInstall ? t('安装 {0}（约 {1}）', { 0: p.id, 1: humanMB(p.size) }) : '不在官方目录中，无法安装',
               () => installOne(p, false), !canInstall || isInstalled),
-            iconButton('retry', `重新安装 / 更新到 ${p.version}`,
+            iconButton('retry', t('重新安装 / 更新到 {0}', { 0: p.version }),
               () => installOne(p, true), !canInstall || !isInstalled),
             // 2.1.0：装了但内核起不来（多半是缺依赖）时，给一个手动补装的入口
-            iconButton('download', '检查并自动补装该插件的依赖（Python 模块）',
+            iconButton('download', t('检查并自动补装该插件的依赖（Python 模块）'),
               () => runDepsInstall(p.id), !isInstalled),
-            iconButton('trash', `卸载 ${p.id}`, () => uninstallOne(p), !isInstalled),
-            iconButton('external', '在资源管理器中打开该插件目录', () => revealOne(p), !isInstalled)
+            iconButton('trash', t('卸载 {0}', { 0: p.id }), () => uninstallOne(p), !isInstalled),
+            iconButton('external', t('在资源管理器中打开该插件目录'), () => revealOne(p), !isInstalled)
           )
         )
       ));
@@ -341,13 +342,13 @@ export async function mount(host, ctx) {
 
     tableHost.appendChild(h('table.table.table--center', null,
       h('thead', null, h('tr', null,
-        h('th', { textContent: '状态' }),
-        h('th', { textContent: '插件' }),
-        h('th', { textContent: '内核状态' }),
-        h('th', { textContent: '版本' }),
-        h('th', { textContent: '体积' }),
-        h('th', { textContent: '能力' }),
-        h('th', { textContent: '操作' })
+        h('th', { textContent: t('状态') }),
+        h('th', { textContent: t('插件') }),
+        h('th', { textContent: t('内核状态') }),
+        h('th', { textContent: t('版本') }),
+        h('th', { textContent: t('体积') }),
+        h('th', { textContent: t('能力') }),
+        h('th', { textContent: t('操作') })
       )),
       tbody
     ));
@@ -367,7 +368,7 @@ export async function mount(host, ctx) {
         await ctx.loadKernels({ silent: true });
       }
     } catch (err) {
-      ctx.reportError('读取插件目录失败', ctx.wrapError(err));
+      ctx.reportError(t('读取插件目录失败'), ctx.wrapError(err));
     } finally {
       refreshBtn.disabled = false;
     }
@@ -382,24 +383,24 @@ export async function mount(host, ctx) {
     await reload(false);
     const k = kernelOf(id);
     if (k && k.status === 'ready') {
-      ctx.toast.success(`${verb}完成，内核已可用`, { text: `${k.name || id}　${k.engineNote || ''}` });
+      ctx.toast.success(t('{0}完成，内核已可用', { 0: verb }), { text: `${k.name || id}　${k.engineNote || ''}` });
     } else if (k) {
-      ctx.toast.warn(`${verb}完成，但内核当前不可用`, {
-        text: `${k.statusLabel || k.status}：${k.detail || '原因未知'}${k.installHint ? `\n需要：${k.installHint}` : ''}`,
+      ctx.toast.warn(t('{0}完成，但内核当前不可用', { 0: verb }), {
+        text: `${statusText(k.status, k.statusLabel)}：${k.detail || '原因未知'}${k.installHint ? `\n需要：${k.installHint}` : ''}`,
       });
     } else {
-      ctx.toast.info(`${verb}完成`, { text: '该插件未提供内核，或清单异常；到「已安装」标签查看。' });
+      ctx.toast.info(t('{0}完成', { 0: verb }), { text: t('该插件未提供内核，或清单异常；到「已安装」标签查看。') });
     }
   }
 
   async function installOne(p, isUpdate) {
     const verb = isUpdate ? '重新安装' : '安装';
-    const ok = await ctx.modal.confirm(`${verb}插件「${p.displayName || p.name || p.id}」？`, {
+    const ok = await ctx.modal.confirm(t('{0}插件「{1}」？', { 0: verb, 1: p.displayName || p.name || p.id }), {
       okLabel: verb,
       detail: [
-        `版本：${p.version}`,
+        t('版本：{0}', { 0: p.version }),
         `需要下载：${humanMB(p.size)}${p.vendorSize ? `（其中自带依赖 ${humanMB(p.vendorSize)}）` : ''}`,
-        p.external && p.external.length ? `装完还需要系统 PATH 里有：${p.external.join(' / ')}` : '不需要额外的外部程序',
+        p.external && p.external.length ? t('装完还需要系统 PATH 里有：{0}', { 0: p.external.join(' / ') }) : '不需要额外的外部程序',
       ].join('\n'),
     });
     if (!ok) return;
@@ -411,16 +412,16 @@ export async function mount(host, ctx) {
         : await window.khs.plugins.install(p.id);
       if (!res || !res.ok) {
         const msg = (res && res.error) || '未知错误';
-        ctx.reportError(`${verb}失败`, ctx.wrapError(new Error(msg)));
-        renderProgress({ phase: 'error', percent: 0, message: `${verb}失败：${msg}` });
+        ctx.reportError(t('{0}失败', { 0: verb }), ctx.wrapError(new Error(msg)));
+        renderProgress({ phase: 'error', percent: 0, message: t('{0}失败：{1}', { 0: verb, 1: msg }) });
         return;
       }
-      renderProgress({ phase: 'done', percent: 100, message: `${p.id} 已就绪` });
+      renderProgress({ phase: 'done', percent: 100, message: t('{0} 已就绪', { 0: p.id }) });
       await afterChange(p.id, verb);
       // 2.1.0：装完顺手查一次依赖，缺东西就问用户要不要自动装
       await promptInstallDeps(p.id, res && res.kernel);
     } catch (err) {
-      ctx.reportError(`${verb}异常`, ctx.wrapError(err));
+      ctx.reportError(t('{0}异常', { 0: verb }), ctx.wrapError(err));
     } finally {
       setTimeout(() => renderProgress(null), 4000);
     }
@@ -446,14 +447,14 @@ export async function mount(host, ctx) {
 
     const lines = [];
     if (missing.length) {
-      lines.push(`缺少 Python 模块：${missing.join('、')}`);
-      lines.push(`将安装的包：${(info.packages || []).join(' ')}`);
-      lines.push(`安装位置：${info.vendorDir}（插件自带依赖目录，卸载时会一并删除）`);
-      lines.push(`解释器：${info.python || '未找到'}`);
+      lines.push(t('缺少 Python 模块：{0}', { 0: missing.join('、') }));
+      lines.push(t('将安装的包：{0}', { 0: (info.packages || []).join(' ') }));
+      lines.push(t('安装位置：{0}（插件自带依赖目录，卸载时会一并删除）', { 0: info.vendorDir }));
+      lines.push(t('解释器：{0}', { 0: info.python || '未找到' }));
     }
     if (external.length) {
       lines.push('');
-      lines.push(`另外还需要系统里已有：${external.join(' / ')}（外部程序无法用 pip 安装）`);
+      lines.push(t('另外还需要系统里已有：{0}（外部程序无法用 pip 安装）', { 0: external.join(' / ') }));
     }
     if (info.installHint) {
       lines.push('');
@@ -463,16 +464,16 @@ export async function mount(host, ctx) {
     const actions = [];
     if (missing.length) {
       actions.push({
-        label: '用镜像安装',
+        label: t('用镜像安装'),
         primary: true,
         run: () => runDepsInstall(id, info.indexPreferred),
       });
-      actions.push({ label: '从官方源安装', run: () => runDepsInstall(id, info.indexOfficial) });
+      actions.push({ label: t('从官方源安装'), run: () => runDepsInstall(id, info.indexOfficial) });
     }
     actions.push({ label: missing.length ? '稍后手动处理' : '知道了', kind: 'ghost' });
 
     ctx.modal.open({
-      title: `${kernel && kernel.name ? kernel.name : id} 缺少依赖`,
+      title: t('{0} 缺少依赖', { 0: kernel && kernel.name ? kernel.name : id }),
       subtitle: id,
       body: ctx.modal.codeBlock(lines.join('\n'), { lang: missing.length ? '缺少依赖' : '需要外部程序' }),
       actions,
@@ -481,50 +482,50 @@ export async function mount(host, ctx) {
 
   /** 真正执行补装：pip 输出会经 evt:plugin:progress 逐行回到进度条上 */
   async function runDepsInstall(id, indexUrl) {
-    renderProgress({ phase: 'deps', percent: 0, message: `正在安装 ${id} 的依赖…` });
+    renderProgress({ phase: 'deps', percent: 0, message: t('正在安装 {0} 的依赖…', { 0: id }) });
     try {
       const res = await window.khs.plugins.installDeps({ id, indexUrl });
       if (!res || !res.ok) {
-        const msg = (res && res.error) || (res && res.tried ? `已尝试 ${res.tried.join(' / ')}` : '未知错误');
-        renderProgress({ phase: 'error', percent: 0, message: `依赖安装失败：${msg}` });
-        ctx.toast.error('依赖安装失败', msg);
+        const msg = (res && res.error) || (res && res.tried ? t('已尝试 {0}', { 0: res.tried.join(' / ') }) : '未知错误');
+        renderProgress({ phase: 'error', percent: 0, message: t('依赖安装失败：{0}', { 0: msg }) });
+        ctx.toast.error(t('依赖安装失败'), msg);
         return;
       }
       renderProgress({
         phase: 'done',
         percent: 100,
-        message: res.alreadyOk ? '依赖已齐全' : `依赖已安装：${(res.installed || []).join(' ')}`,
+        message: res.alreadyOk ? '依赖已齐全' : t('依赖已安装：{0}', { 0: (res.installed || []).join(' ') }),
       });
       ctx.toast.success(res.alreadyOk ? '依赖已齐全' : '依赖安装完成', {
-        text: res.indexUsed ? `来源 ${res.indexUsed}` : id,
+        text: res.indexUsed ? t('来源 {0}', { 0: res.indexUsed }) : id,
       });
       await ctx.refreshKernels({ announce: false });
       await reload(false);
     } catch (err) {
-      ctx.reportError('依赖安装异常', ctx.wrapError(err));
+      ctx.reportError(t('依赖安装异常'), ctx.wrapError(err));
     } finally {
       setTimeout(() => renderProgress(null), 5000);
     }
   }
 
   async function uninstallOne(p) {
-    const ok = await ctx.modal.confirm(`卸载插件「${p.displayName || p.name || p.id}」？`, {
-      okLabel: '卸载',
+    const ok = await ctx.modal.confirm(t('卸载插件「{0}」？', { 0: p.displayName || p.name || p.id }), {
+      okLabel: t('卸载'),
       danger: true,
-      detail: `会删除 ${p.dir || p.id} 目录（${humanMB(p.installedBytes || p.size)}）。\n对应的内核会立刻从转换页消失。`,
+      detail: t('会删除 {0} 目录（{1}）。\\n对应的内核会立刻从转换页消失。', { 0: p.dir || p.id, 1: humanMB(p.installedBytes || p.size) }),
     });
     if (!ok) return;
     try {
       const res = await window.khs.plugins.uninstall(p.id);
       if (!res || !res.ok) {
-        ctx.reportError('卸载失败', ctx.wrapError(new Error((res && res.error) || '未知错误')));
+        ctx.reportError(t('卸载失败'), ctx.wrapError(new Error((res && res.error) || '未知错误')));
         return;
       }
       await ctx.refreshKernels({ announce: false });
       await reload(false);
-      ctx.toast.success('已卸载', { text: p.id });
+      ctx.toast.success(t('已卸载'), { text: p.id });
     } catch (err) {
-      ctx.reportError('卸载异常', ctx.wrapError(err));
+      ctx.reportError(t('卸载异常'), ctx.wrapError(err));
     }
   }
 
@@ -532,7 +533,7 @@ export async function mount(host, ctx) {
     try {
       await window.khs.plugins.reveal(p.id);
     } catch (err) {
-      ctx.reportError('打开目录失败', ctx.wrapError(err));
+      ctx.reportError(t('打开目录失败'), ctx.wrapError(err));
     }
   }
 
@@ -540,7 +541,7 @@ export async function mount(host, ctx) {
     try {
       await window.khs.plugins.openDir();
     } catch (err) {
-      ctx.reportError('打开插件目录失败', ctx.wrapError(err));
+      ctx.reportError(t('打开插件目录失败'), ctx.wrapError(err));
     }
   }
 

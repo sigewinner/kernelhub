@@ -13,7 +13,7 @@
 import { h, clear, on, copyText, iconAction } from '../dom.js';
 import { icon } from '../icons.js';
 import { thousands, platformLabel, prettyJson, orDash } from '../format.js';
-import { t, LOCALES, initLocale } from '../i18n.js';
+import { t, LOCALES, initLocale, statusText } from '../i18n.js';
 
 /** 字节 → 人类可读（设置页自己用，避免跨视图 import） */
 function humanBytes(bytes) {
@@ -52,7 +52,7 @@ export async function mount(host, ctx) {
 
   /* --------------------------------------------------------------- 结构 */
 
-  const navEl = h('nav.settings-nav', { 'aria-label': '设置分类' });
+  const navEl = h('nav.settings-nav', { 'aria-label': t('设置分类') });
   const paneEl = h('div.settings-pane');
 
   const wrap = h('div.view-inner', { dataset: { view: 'settings' } },
@@ -73,12 +73,19 @@ export async function mount(host, ctx) {
     );
   }
 
+  /**
+   * 字段。第三参数是**悬停提示**，不再渲染成页面上的一行小字（2.2.3）。
+   * 理由：这些说明（例如「并发改小可以减轻机器压力…」）只有在你要调它的时候才有用，
+   * 平时却一直占着版面；挂到 title 上，鼠标停上去才出现。
+   */
   function field(label, control, hint) {
-    return h('div.field', null,
-      h('label.label', { textContent: label }),
-      control,
-      hint ? h('div.field__hint', { textContent: hint }) : null
-    );
+    const labelEl = h('label.label', { textContent: label });
+    if (hint) {
+      labelEl.title = hint;
+      if (control && control.setAttribute && !control.title) control.title = hint;
+      else if (control && control.nodeType === 1 && !control.title) control.title = hint;
+    }
+    return h('div.field', null, labelEl, control);
   }
 
   /**
@@ -100,18 +107,20 @@ export async function mount(host, ctx) {
 
   function pathLine(label, value, extra) {
     return h('div', null,
-      h('div.field__hint', { textContent: label }),
+      h('div.pathline__label', { textContent: label }),
       h('div.pathline', null,
         h('span.pathline__value', { textContent: orDash(value), title: String(value || '') }),
-        iconCopy(value, `复制${label}`),
+        iconCopy(value, t('复制{0}', { 0: label })),
         extra || null
       )
     );
   }
 
-  function readOnlyRow(label, value) {
+  function readOnlyRow(label, value, hint) {
+    const labelEl = h('span.dim', { style: { minWidth: '104px' }, textContent: label });
+    if (hint) labelEl.title = hint;
     return h('div.pathline', null,
-      h('span.dim', { style: { minWidth: '104px' }, textContent: label }),
+      labelEl,
       h('span.pathline__value', { textContent: orDash(value), title: String(value || '') })
     );
   }
@@ -227,23 +236,13 @@ export async function mount(host, ctx) {
       return h('label.radio', null, input, h('span', { textContent: label }), note ? h('span.dim', { textContent: note }) : null);
     };
 
+    // 2.2.3：主题下方原本有两段说明小字（瑞士风格、写入设置），已去掉 ——
+    // 主题是两个单选按钮，选一下就知道效果，说明只是占版面。
     paneEl.appendChild(group(t('主题'),
       h('div.radiolist', null,
         makeRadio('light', t('浅色')),
         makeRadio('dark', t('深色'))
-      ),
-      h('div.field__hint', {
-        textContent: t('界面采用瑞士风格（International Typographic Style）：网格、无衬线字、左对齐、大量留白，只用黑白灰加一个红点。浅色是默认主题，深色用于夜间或投影环境。'),
-      }),
-      h('div.field__hint', {
-        textContent: t('主题写入设置并持久化，顶栏右侧的图标按钮可以在任何视图里快速切换。'),
-      })
-    ));
-
-    paneEl.appendChild(group(t('界面约定'),
-      h('div.field__hint', {
-        textContent: t('每屏可见按钮不超过 10 个：详细配置都收在「高级」抽屉里。表格行末的图标操作、字段里的浏览按钮不算按钮数量。'),
-      })
+      )
     ));
   }
 
@@ -268,15 +267,8 @@ export async function mount(host, ctx) {
     });
 
     paneEl.appendChild(group(t('语言'),
-      field(t('界面语言'), localeSelect,
-        t('切换后界面会重新加载。当前已英文化的范围：导航、顶栏、状态栏、命令面板、通知与设置页；各视图正文将在后续版本补齐。')),
+      field(t('界面语言'), localeSelect, t('切换后界面会重新加载，已英文化的范围见下表。')),
       readOnlyRow(t('设置值'), settings.locale || 'zh-CN')
-    ));
-
-    paneEl.appendChild(group(t('数字与时间格式'),
-      h('div.field__hint', { textContent: t('数字使用千分位分组；表格中的数字右对齐并启用等宽数字（tabular-nums）。') }),
-      h('div.field__hint', { textContent: t('时间使用 24 小时制，完整格式为 YYYY-MM-DD HH:MM:SS，日志中只显示 HH:MM:SS。') }),
-      h('div.field__hint', { textContent: t('文件体积按 1024 进制换算（B / KB / MB / GB / TB）。') })
     ));
   }
 
@@ -303,7 +295,7 @@ export async function mount(host, ctx) {
             await save({ extraPluginDirs: extraDirs.concat([folder]) }, '插件目录已添加');
             await ctx.refreshKernels();
           } catch (err) {
-            ctx.reportError('添加插件目录失败', ctx.wrapError(err));
+            ctx.reportError(t('添加插件目录失败'), ctx.wrapError(err));
           }
         },
       },
@@ -322,7 +314,7 @@ export async function mount(host, ctx) {
           },
         })
       ))
-      : [h('div.field__hint', { textContent: t('还没有额外插件目录。') })];
+      : [h('div.note-line.dim', { textContent: t('还没有额外插件目录。') })];
 
     const autoScan = h('input.check', { type: 'checkbox', checked: settings.autoScan !== false });
     autoScan.addEventListener('change', () => save({ autoScan: autoScan.checked }, autoScan.checked ? '启动时自动扫描已开启' : '启动时自动扫描已关闭'));
@@ -337,8 +329,7 @@ export async function mount(host, ctx) {
           children: [icon('folderOpen', { size: 14 })],
           onClick: () => ctx.openPathSafe(layout.hubRoot, '内核仓库'),
         })
-      ),
-      h('div.field__hint', { textContent: t('该目录由主进程在启动时探测得到（也可以由环境变量指定），界面上是只读的。') })
+      )
     ));
 
     paneEl.appendChild(group(t('额外插件目录'),
@@ -351,27 +342,23 @@ export async function mount(host, ctx) {
       type: 'text',
       value: String((settings && settings.pipIndexUrl) || ''),
       placeholder: 'https://pypi.tuna.tsinghua.edu.cn/simple',
-      'aria-label': 'pip 源',
+      'aria-label': t('pip 源'),
     });
     pipIndexInput.addEventListener('change', () =>
       save({ pipIndexUrl: pipIndexInput.value.trim() }, '已保存 pip 源')
     );
     paneEl.appendChild(group(t('依赖安装'),
-      h('div.field', null,
-        h('label.label', { textContent: t('pip 源') }),
-        pipIndexInput
-      ),
-      h('div.field__hint', {
-        textContent: t('插件缺 Python 依赖时的自动安装源（默认清华镜像）。装不上会自动回退到 PyPI 官方源。'),
-      })
+      field(t('pip 源'), pipIndexInput,
+        t('插件缺 Python 依赖时的自动安装源（默认清华镜像）。装不上会自动回退到 PyPI 官方源。'))
     ));
 
+    const autoScanRow = h('label.check-row', null, autoScan, h('span', { textContent: t('启动时自动扫描内核') }));
+    autoScanRow.title = t('关闭后启动不会重新探测依赖，需要在「插件 → 已安装」里手动点「重新扫描」。');
     paneEl.appendChild(group(t('扫描'),
-      h('label.check-row', null, autoScan, h('span', { textContent: t('启动时自动扫描内核') })),
-      h('div.field__hint', { textContent: t('关闭后启动不会重新探测依赖，需要在「插件 → 已安装」里手动点「重新扫描」。') }),
+      autoScanRow,
       h('div.pathline', null,
         h('span.dim', { style: { minWidth: '104px' }, textContent: t('已停用内核') }),
-        h('span.pathline__value', { textContent: `${disabled.length} 个` }),
+        h('span.pathline__value', { textContent: t('{0} 个', { 0: disabled.length }) }),
         h('a.linkbtn', { href: '#/plugins', textContent: t('前往插件页管理') })
       )
     ));
@@ -403,9 +390,9 @@ export async function mount(host, ctx) {
       const n = Number(slider.value) || 1;
       try {
         await window.khs.queue.setParallel(n);
-        await save({ maxParallel: n }, `并发上限已设为 ${n}`);
+        await save({ maxParallel: n }, t('并发上限已设为 {0}', { 0: n }));
       } catch (err) {
-        ctx.reportError('设置并发上限失败', ctx.wrapError(err));
+        ctx.reportError(t('设置并发上限失败'), ctx.wrapError(err));
       }
     });
 
@@ -415,12 +402,13 @@ export async function mount(host, ctx) {
       step: '1000',
       value: String(Number(settings.timeoutMs) || 600000),
     });
-    const secondsHint = h('div.field__hint', {
-      textContent: `≈ ${((Number(settings.timeoutMs) || 600000) / 1000).toFixed(0)} 秒`,
+    // 动态数值显示（毫秒 ↔ 秒），不是说明小字：它是输入框的实时换算结果
+    const secondsHint = h('div.note-line.mono', {
+      textContent: t('≈ {0} 秒', { 0: ((Number(settings.timeoutMs) || 600000) / 1000).toFixed(0) }),
     });
     timeoutInput.addEventListener('input', () => {
       const ms = Number(timeoutInput.value);
-      secondsHint.textContent = Number.isFinite(ms) && ms > 0 ? `≈ ${(ms / 1000).toFixed(0)} 秒` : '请输入毫秒数';
+      secondsHint.textContent = Number.isFinite(ms) && ms > 0 ? t('≈ {0} 秒', { 0: (ms / 1000).toFixed(0) }) : t('请输入毫秒数');
     });
     timeoutInput.addEventListener('change', () => {
       const ms = Math.max(1000, Number(timeoutInput.value) || 600000);
@@ -430,18 +418,18 @@ export async function mount(host, ctx) {
 
     paneEl.appendChild(group(t('并发'),
       field(t('并发上限（1–8）'), h('div.num-row', null, slider, parallelValue),
-        '队列同时执行的作业数量；改小可以减轻机器压力，改大可以更快跑完批量任务。')
+        t('队列同时执行的作业数量；改小可以减轻机器压力，改大可以更快跑完批量任务。'))
     ));
 
     paneEl.appendChild(group(t('超时'),
       field(t('单次调用超时（毫秒）'), timeoutInput,
-        '单个内核调用超过该时长会被判定为失败；下方显示换算后的秒数。'),
+        t('单个内核调用超过该时长会被判定为失败；下方显示换算后的秒数。')),
       secondsHint
     ));
 
     paneEl.appendChild(group(t('日志缓冲'),
-      readOnlyRow('最多保留', `${thousands(Number(settings.keepLogLines) || 4000)} 行`),
-      h('div.field__hint', { textContent: t('日志超过上限后会丢弃最早的行；日志页可以手动清空。') })
+      readOnlyRow(t('最多保留'), t('{n} 行', { n: thousands(Number(settings.keepLogLines) || 4000) }),
+        t('日志超过上限后会丢弃最早的行；日志页可以手动清空。'))
     ));
   }
 
@@ -452,21 +440,20 @@ export async function mount(host, ctx) {
     const info = vs.info || store.pick('info') || {};
 
     paneEl.appendChild(group(t('应用路径'),
-      pathLine('状态目录（设置、缓存与日志）', info.stateDir),
-      pathLine('运行目录（临时作业文件）', layout.runDir)
+      pathLine(t('状态目录（设置、缓存与日志）'), info.stateDir),
+      pathLine(t('运行目录（临时作业文件）'), layout.runDir)
     ));
 
     paneEl.appendChild(group(t('内核与协议路径'),
-      pathLine('内核仓库目录', layout.hubRoot),
-      pathLine('插件目录', layout.pluginsDir),
-      pathLine('内置内核目录', layout.vendorDir),
-      pathLine('协议 Schema 目录', layout.schemaDir)
+      pathLine(t('内核仓库目录'), layout.hubRoot),
+      pathLine(t('插件目录'), layout.pluginsDir),
+      pathLine(t('内置内核目录'), layout.vendorDir),
+      pathLine(t('协议 Schema 目录'), layout.schemaDir)
     ));
 
     paneEl.appendChild(group('Python',
-      pathLine('解释器', layout.python),
-      readOnlyRow('版本', layout.pythonVersion || '—'),
-      h('div.field__hint', { textContent: t('Python 由主进程在启动时探测，内核适配器以它为运行时。') })
+      pathLine(t('解释器'), layout.python),
+      readOnlyRow(t('版本'), layout.pythonVersion || '—')
     ));
 
     if (Array.isArray(layout.sysPath) && layout.sysPath.length) {
@@ -541,7 +528,7 @@ export async function mount(host, ctx) {
     }, h('span', { textContent: t('查看更新说明') }));
 
     const actionsRow = h('div.row.gap-2', null, checkBtn, downBtn, notesBtn);
-    const noteEl = h('div.field__hint');
+    const noteEl = h('div.upd-note');
 
     updRefs = {
       labelEl, checkBtn, latestKey, latestVal, assetKey, assetVal,
@@ -742,7 +729,7 @@ export async function mount(host, ctx) {
       for (const k of broken) {
         body.appendChild(h('tr', null,
           h('td', { class: 'truncate', textContent: k.name || k.id }),
-          h('td', { class: 'mono', textContent: orDash(k.statusLabel || k.status) }),
+          h('td', { class: 'mono', textContent: orDash(statusText(k.status, k.statusLabel)) }),
           h('td', { class: 'truncate', textContent: orDash(k.installHint) })
         ));
       }
@@ -762,8 +749,9 @@ export async function mount(host, ctx) {
         )
       ));
     } else {
+      // 状态行（不是说明小字）：这里报的是「全都好了」这个事实
       paneEl.appendChild(group(t('需要处理的内核'),
-        h('div.field__hint', { textContent: t('全部内核都可用，没有需要补齐的依赖。') })
+        h('div.strip.strip--ok', null, h('span', { textContent: t('全部内核都可用，没有需要补齐的依赖。') }))
       ));
     }
 
@@ -795,7 +783,7 @@ export async function mount(host, ctx) {
       vs.doctor = await window.khs.doctor();
     } catch (err) {
       vs.doctorError = (err && err.message) ? err.message : String(err);
-      ctx.reportError('运行自检失败', ctx.wrapError(err));
+      ctx.reportError(t('运行自检失败'), ctx.wrapError(err));
     }
     if (vs.cat === 'about') renderPane();
   }
@@ -806,7 +794,7 @@ export async function mount(host, ctx) {
       vs.info = info;
       vs.layout = layout;
     } catch (err) {
-      ctx.reportError('读取应用信息失败', ctx.wrapError(err));
+      ctx.reportError(t('读取应用信息失败'), ctx.wrapError(err));
     }
     renderPane();
   }

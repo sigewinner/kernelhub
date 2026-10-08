@@ -1677,6 +1677,50 @@ async function runSelfTest() {
         step('中文路径文件能加入列表并在界面正常显示', false, String(err.message || err));
       }
 
+      /* ---- 2.2.3：说明小字清零 + 英文化词典规模 ---- */
+
+      // 说明小字（.field__hint）应当在整个界面里彻底消失：
+      // 这类解释一律改成悬停提示（title），不再占版面。
+      let hintLeft = 0;
+      const hintViews = [];
+      for (const hash of ['#/convert', '#/batch', '#/plugins', '#/formats', '#/protocol', '#/logs', '#/settings']) {
+        await js(`window.__khsTest ? window.__khsTest.goto(${JSON.stringify(hash)}) : null`);
+        await settle(700);
+        const n = await js(`document.querySelectorAll('#view .field__hint').length`);
+        if (n) {
+          hintViews.push(`${hash}:${n}`);
+          hintLeft += Number(n) || 0;
+        }
+      }
+      step(
+        '说明小字已全部清除（改为悬停提示）',
+        hintLeft === 0,
+        hintLeft === 0 ? '七个视图里 .field__hint 均为 0' : `残留 ${hintLeft} 处：${hintViews.join('、')}`
+      );
+
+      // 关键设置项的说明应当是 title（悬停可见）而不是页面上的一行字
+      await js(`window.__khsTest ? window.__khsTest.goto('#/settings') : null`);
+      await settle(900);
+      await js(`window.__khsTest.clickSettingsCategory('队列与性能')`);
+      await settle(700);
+      const titleProbe = await js(`(() => {
+        const labels = Array.from(document.querySelectorAll('#view label.label, #view .label'));
+        const hit = labels.find((el) => /并发上限|Concurrency/.test(el.textContent || ''));
+        return hit ? { text: hit.textContent.trim(), title: hit.title || '' } : null;
+      })()`);
+      step(
+        '设置项说明挂到了悬停提示上',
+        Boolean(titleProbe && titleProbe.title.length > 8),
+        titleProbe ? `「${titleProbe.text}」→ ${titleProbe.title.slice(0, 44)}…` : '没找到「并发上限」字段'
+      );
+
+      const i18nFull = await js(`window.__khsTest.i18nInfo()`);
+      step(
+        '英文化词典已覆盖全部界面文案',
+        Boolean(i18nFull && i18nFull.entries >= 600),
+        i18nFull ? `词条=${i18nFull.entries}（六个视图 + 设置页文案已补齐）` : '取不到词典规模'
+      );
+
       // 回到插件页并切回「可安装」标签：后面的目录渲染断言依赖它
       await js(`window.__khsTest ? window.__khsTest.goto('#/plugins') : null`);
       await settle(1200);

@@ -16,6 +16,7 @@ import { icon } from '../icons.js';
 import { createSheet } from '../sheet.js';
 import { statusBadge, kernelStateTone } from '../layout.js';
 import { thousands, prettyJson, orDash, joinLimited } from '../format.js';
+import { t, statusText, kindText, opText } from '../i18n.js';
 
 export async function mount(host, ctx) {
   const { store } = ctx;
@@ -33,16 +34,16 @@ export async function mount(host, ctx) {
 
   const searchInput = h('input.input', {
     type: 'text',
-    placeholder: '搜索名称 / id / 格式',
-    'aria-label': '搜索内核',
+    placeholder: t('搜索名称 / id / 格式'),
+    'aria-label': t('搜索内核'),
   });
-  const statusSelect = h('select.select', { 'aria-label': '状态筛选' });
-  const kindSelect = h('select.select', { 'aria-label': '类型筛选' });
-  const sortSelect = h('select.select', { 'aria-label': '排序' });
+  const statusSelect = h('select.select', { 'aria-label': t('状态筛选') });
+  const kindSelect = h('select.select', { 'aria-label': t('类型筛选') });
+  const sortSelect = h('select.select', { 'aria-label': t('排序') });
 
   const rescanBtn = h('button.btn', {
     type: 'button',
-    title: '重新扫描内核目录并重新探测依赖',
+    title: t('重新扫描内核目录并重新探测依赖'),
     on: {
       click: async () => {
         rescanBtn.disabled = true;
@@ -53,13 +54,13 @@ export async function mount(host, ctx) {
         }
       },
     },
-  }, h('span', { textContent: '重新扫描' }));
+  }, h('span', { textContent: t('重新扫描') }));
 
   const openDirBtn = h('button.btn', {
     type: 'button',
-    title: '在资源管理器中打开内核仓库目录',
+    title: t('在资源管理器中打开内核仓库目录'),
     on: { click: () => ctx.openPathSafe((store.pick('layout') || {}).hubRoot, '内核仓库') },
-  }, h('span', { textContent: '打开目录' }));
+  }, h('span', { textContent: t('打开目录') }));
 
   const tableHost = h('div');
 
@@ -70,7 +71,7 @@ export async function mount(host, ctx) {
   const head = ctx && ctx.embed
     ? null
     : h('div.view-head', null,
-        h('h1.view-title', { textContent: '内核' }),
+        h('h1.view-title', { textContent: t('内核') }),
         h('div.view-rule')
       );
 
@@ -89,7 +90,7 @@ export async function mount(host, ctx) {
 
   /* --------------------------------------------------------- 详情（抽屉） */
 
-  const sheet = createSheet(host, { id: 'kernel-detail', title: '内核详情' });
+  const sheet = createSheet(host, { id: 'kernel-detail', title: t('内核详情') });
   const sheetBody = sheet.body;
 
   /* --------------------------------------------------------------- 筛选 */
@@ -98,12 +99,13 @@ export async function mount(host, ctx) {
     return (store.pick('kernels') || []).filter(Boolean);
   }
 
+  /** 操作名：优先用内核自己声明的标签，否则退回操作目录里的标签；英文模式按 op id 取英文 */
   function opLabelOf(kernel, op) {
     const rows = (kernel.descriptions && kernel.descriptions.op) || [];
     const hit = rows.find((row) => row && row.op === op);
-    if (hit && hit.label) return hit.label;
+    if (hit && hit.label) return opText(op, hit.label);
     const opsMap = store.pick('opsMap') || {};
-    return (opsMap[op] && opsMap[op].label) || String(op || '');
+    return opText(op, (opsMap[op] && opsMap[op].label) || String(op || ''));
   }
 
   function matches(kernel) {
@@ -141,27 +143,28 @@ export async function mount(host, ctx) {
 
     const currentStatus = vs.status;
     clear(statusSelect);
-    statusSelect.appendChild(h('option', { value: 'all', textContent: '全部状态' }));
+    statusSelect.appendChild(h('option', { value: 'all', textContent: t('全部状态') }));
     const statusSeen = new Map();
-    for (const k of kernels) if (!statusSeen.has(k.status)) statusSeen.set(k.status, k.statusLabel || k.status);
+    // 筛选下拉的选项来自**数据里的状态/类型**，所以要按 id 取显示名（英文模式下是英文）
+    for (const k of kernels) if (!statusSeen.has(k.status)) statusSeen.set(k.status, statusText(k.status, k.statusLabel));
     for (const [value, label] of statusSeen) statusSelect.appendChild(h('option', { value, textContent: label }));
     vs.status = Array.from(statusSelect.options).some((o) => o.value === currentStatus) ? currentStatus : 'all';
     statusSelect.value = vs.status;
 
     const currentKind = vs.kind;
     clear(kindSelect);
-    kindSelect.appendChild(h('option', { value: 'all', textContent: '全部类型' }));
+    kindSelect.appendChild(h('option', { value: 'all', textContent: t('全部类型') }));
     const kindSeen = new Map();
-    for (const k of kernels) if (!kindSeen.has(String(k.kind || ''))) kindSeen.set(String(k.kind || ''), k.kindLabel || k.kind);
+    for (const k of kernels) if (!kindSeen.has(String(k.kind || ''))) kindSeen.set(String(k.kind || ''), kindText(k.kind, k.kindLabel));
     for (const [value, label] of kindSeen) kindSelect.appendChild(h('option', { value, textContent: label }));
     vs.kind = Array.from(kindSelect.options).some((o) => o.value === currentKind) ? currentKind : 'all';
     kindSelect.value = vs.kind;
 
     if (!sortSelect.childNodes.length) {
-      sortSelect.appendChild(h('option', { value: 'status', textContent: '按状态' }));
-      sortSelect.appendChild(h('option', { value: 'name', textContent: '按名称' }));
-      sortSelect.appendChild(h('option', { value: 'priority', textContent: '按优先级' }));
-      sortSelect.appendChild(h('option', { value: 'capability', textContent: '按能力数' }));
+      sortSelect.appendChild(h('option', { value: 'status', textContent: t('按状态') }));
+      sortSelect.appendChild(h('option', { value: 'name', textContent: t('按名称') }));
+      sortSelect.appendChild(h('option', { value: 'priority', textContent: t('按优先级') }));
+      sortSelect.appendChild(h('option', { value: 'capability', textContent: t('按能力数') }));
       sortSelect.value = vs.sort;
     }
   }
@@ -180,9 +183,9 @@ export async function mount(host, ctx) {
     const ready = Number(store.pick('kernelsReady') || 0);
     const searchPaths = store.pick('kernelSearchPaths') || [];
     ctx.setStatusInfo([
-      `可用 ${ready} / 共 ${total}`,
-      `当前显示 ${listedCount} 个`,
-      searchPaths.length ? `搜索路径 ${searchPaths.length} 处` : null,
+      t('可用 {0} / 共 {1}', { 0: ready, 1: total }),
+      t('当前显示 {0} 个', { 0: listedCount }),
+      searchPaths.length ? t('搜索路径 {0} 处', { 0: searchPaths.length }) : null,
     ]);
   }
 
@@ -197,7 +200,7 @@ export async function mount(host, ctx) {
     const errors = store.pick('kernelErrors') || [];
     if (errors.length) {
       tableHost.appendChild(h('div.strip.strip--err', null,
-        h('span', { textContent: `扫描过程中有 ${errors.length} 条问题：${errors.slice(0, 2).join('；')}` })
+        h('span', { textContent: t('扫描过程中有 {0} 条问题：{1}', { 0: errors.length, 1: errors.slice(0, 2).join('；') }) })
       ));
     }
 
@@ -218,9 +221,9 @@ export async function mount(host, ctx) {
         tbody.appendChild(h('tr', {
           tabindex: '0',
           role: 'button',
-          'aria-label': `查看内核 ${kernel.name || kernel.id} 的详情`,
+          'aria-label': t('查看内核 {0} 的详情', { 0: kernel.name || kernel.id }),
           dataset: { kernelId: kernel.id, action: 'kernel-detail' },
-          title: `${kernel.description || kernel.name || kernel.id}\n（点击整行查看详情）`,
+          title: t('{0}\\n（点击整行查看详情）', { 0: kernel.description || kernel.name || kernel.id }),
           on: {
             click: open,
             keydown: (event) => {
@@ -237,7 +240,7 @@ export async function mount(host, ctx) {
               h('span.kernel-name__id', { textContent: kernel.id })
             )
           ),
-          h('td', null, statusBadge(kernel.statusLabel || kernel.status, kernelStateTone(kernel.status))),
+          h('td', null, statusBadge(statusText(kernel.status, kernel.statusLabel), kernelStateTone(kernel.status))),
           h('td', null,
             h('div.tagflow', null,
               ...(kernel.ops || []).slice(0, 3).map((op) => h('span.tag', { textContent: opLabelOf(kernel, op) }))
@@ -261,13 +264,13 @@ export async function mount(host, ctx) {
           h('col', { style: { width: '8%' } })
         ),
         h('thead', null, h('tr', null,
-          h('th', { textContent: '名称' }),
-          h('th', { textContent: '状态' }),
-          h('th', { textContent: '操作' }),
-          h('th', { class: 'num', textContent: '能力' }),
-          h('th', { class: 'num', textContent: '参数' }),
-          h('th', { textContent: '版本' }),
-          h('th', { class: 'num', textContent: '详情' })
+          h('th', { textContent: t('名称') }),
+          h('th', { textContent: t('状态') }),
+          h('th', { textContent: t('操作') }),
+          h('th', { class: 'num', textContent: t('能力') }),
+          h('th', { class: 'num', textContent: t('参数') }),
+          h('th', { textContent: t('版本') }),
+          h('th', { class: 'num', textContent: t('详情') })
         )),
         tbody
       ));
@@ -291,7 +294,7 @@ export async function mount(host, ctx) {
     const flow = h('div.tagflow');
     const values = Array.isArray(list) ? list : [];
     for (const value of values.slice(0, limit)) flow.appendChild(h('span.tag', { textContent: String(value) }));
-    if (values.length > limit) flow.appendChild(h('span.tag', { textContent: `等 ${values.length} 项` }));
+    if (values.length > limit) flow.appendChild(h('span.tag', { textContent: t('等 {0} 项', { 0: values.length }) }));
     return flow;
   }
 
@@ -303,8 +306,8 @@ export async function mount(host, ctx) {
       children: [h('span', { textContent: label || '复制' })],
       onClick: async () => {
         const ok = await copyText(text);
-        if (ok) ctx.toast.success('已复制', { text: `${String(text || '').length} 个字符` });
-        else ctx.toast.warn('复制失败', '当前环境不允许访问剪贴板');
+        if (ok) ctx.toast.success(t('已复制'), { text: t('{0} 个字符', { 0: String(text || '').length }) });
+        else ctx.toast.warn(t('复制失败'), '当前环境不允许访问剪贴板');
       },
     });
   }
@@ -330,7 +333,7 @@ export async function mount(host, ctx) {
     if (!detail || detail.ok === false) {
       sheetBody.appendChild(h('div.error-state', null,
         h('div.error-state__msg', { textContent: (detail && detail.message) || '读取内核详情失败' }),
-        h('button.linkbtn', { type: 'button', on: { click: () => openDetail(id) } }, h('span', { textContent: '重试' }))
+        h('button.linkbtn', { type: 'button', on: { click: () => openDetail(id) } }, h('span', { textContent: t('重试') }))
       ));
       return;
     }
@@ -339,21 +342,21 @@ export async function mount(host, ctx) {
 
     /* 概览 */
     sheetBody.appendChild(h('div.param-section', null,
-      h('div.param-section__title', null, h('span', { textContent: '概览' })),
+      h('div.param-section__title', null, h('span', { textContent: t('概览') })),
       kvRows([
         // 显示名是软件层面的叫法；原名与 id 是代码层面的，一并列出便于对照
         ['名称', orDash(kernel.displayName || kernel.name)],
         ['插件原名', orDash(kernel.codeName)],
         ['插件 id', orDash(kernel.id)],
-        ['状态', orDash(kernel.statusLabel || kernel.status)],
-        ['类型', orDash(kernel.kindLabel || kernel.kind)],
+        ['状态', orDash(statusText(kernel.status, kernel.statusLabel))],
+        ['类型', orDash(kindText(kernel.kind, kernel.kindLabel))],
         ['优先级', String(orDash(kernel.priority))],
         ['许可证', orDash(kernel.license)],
         ['目录', orDash(kernel.directory)],
         ['入口', orDash(kernel.entryPath)],
         ['清单', orDash(kernel.manifestPath)],
       ]),
-      kernel.description ? h('div.field__hint', { textContent: kernel.description }) : null
+      kernel.description ? h('div.note-line.dim', { textContent: kernel.description }) : null
     ));
 
     /* 启停与优先级 */
@@ -368,7 +371,7 @@ export async function mount(host, ctx) {
         openDetail(kernel.id);
       } catch (err) {
         enableCheck.checked = !want;
-        ctx.reportError('切换内核启停失败', ctx.wrapError(err));
+        ctx.reportError(t('切换内核启停失败'), ctx.wrapError(err));
       } finally {
         enableCheck.disabled = false;
       }
@@ -384,18 +387,18 @@ export async function mount(host, ctx) {
       try {
         await window.khs.kernels.setPriority(kernel.id, value);
         await ctx.refreshKernels();
-        ctx.toast.success('优先级已更新', { text: `${kernel.name || kernel.id} → ${value}` });
+        ctx.toast.success(t('优先级已更新'), { text: `${kernel.name || kernel.id} → ${value}` });
       } catch (err) {
-        ctx.reportError('更新优先级失败', ctx.wrapError(err));
+        ctx.reportError(t('更新优先级失败'), ctx.wrapError(err));
       }
     });
 
     sheetBody.appendChild(h('div.param-section', null,
-      h('div.param-section__title', null, h('span', { textContent: '调度' })),
+      h('div.param-section__title', null, h('span', { textContent: t('调度') })),
       h('div.row.gap-5', null,
-        h('label.check-row', null, enableCheck, h('span', { textContent: '启用该内核' })),
+        h('label.check-row', null, enableCheck, h('span', { textContent: t('启用该内核') })),
         h('div.field', null,
-          h('label.label', { textContent: '优先级（越大越优先）' }),
+          h('label.label', { textContent: t('优先级（越大越优先）') }),
           priorityInput
         )
       )
@@ -408,7 +411,7 @@ export async function mount(host, ctx) {
     const capBody = h('tbody');
     for (const cap of caps.slice(0, 200)) {
       capBody.appendChild(h('tr', null,
-        h('td', { class: 'truncate', textContent: cap.label || cap.id || '' }),
+        h('td', { class: 'truncate', textContent: opText(cap.op, cap.label) || cap.id || '' }),
         h('td', null, tagsOf(cap.from, 12)),
         h('td', null, tagsOf(cap.to, 12)),
         h('td', { class: 'num mono', textContent: `${orDash(cap.quality)} / ${orDash(cap.output_mode)}` })
@@ -416,8 +419,8 @@ export async function mount(host, ctx) {
     }
     sheetBody.appendChild(h('div.param-section', null,
       h('div.param-section__title', null,
-        h('span', { textContent: '能力矩阵' }),
-        h('span.badge.badge--mono', { textContent: `${caps.length} 条` })
+        h('span', { textContent: t('能力矩阵') }),
+        h('span.badge.badge--mono', { textContent: t('{0} 条', { 0: caps.length }) })
       ),
       caps.length
         ? h('table.table.caps-table', null,
@@ -428,14 +431,14 @@ export async function mount(host, ctx) {
             h('col', { style: { width: '14%' } })
           ),
           h('thead', null, h('tr', null,
-            h('th', { textContent: '能力' }),
-            h('th', { textContent: '输入格式' }),
-            h('th', { textContent: '输出格式' }),
-            h('th', { class: 'num', textContent: '质量/模式' })
+            h('th', { textContent: t('能力') }),
+            h('th', { textContent: t('输入格式') }),
+            h('th', { textContent: t('输出格式') }),
+            h('th', { class: 'num', textContent: t('质量/模式') })
           )),
           capBody
         )
-        : h('div.field__hint', { textContent: '该内核没有声明能力。' })
+        : h('div.note-line.dim', { textContent: t('该内核没有声明能力。') })
     ));
 
     /* 参数表 */
@@ -451,8 +454,8 @@ export async function mount(host, ctx) {
     }
     sheetBody.appendChild(h('div.param-section', null,
       h('div.param-section__title', null,
-        h('span', { textContent: '参数表' }),
-        h('span.badge.badge--mono', { textContent: `${params.length} 项` })
+        h('span', { textContent: t('参数表') }),
+        h('span.badge.badge--mono', { textContent: t('{0} 项', { 0: params.length }) })
       ),
       params.length
         ? h('table.table.params-table', null,
@@ -464,13 +467,13 @@ export async function mount(host, ctx) {
           ),
           h('thead', null, h('tr', null,
             h('th', { textContent: 'id' }),
-            h('th', { textContent: '类型' }),
-            h('th', { textContent: '默认值' }),
-            h('th', { textContent: '说明' })
+            h('th', { textContent: t('类型') }),
+            h('th', { textContent: t('默认值') }),
+            h('th', { textContent: t('说明') })
           )),
           paramBody
         )
-        : h('div.field__hint', { textContent: '该内核没有声明参数。' })
+        : h('div.note-line.dim', { textContent: t('该内核没有声明参数。') })
     ));
 
     /* 引擎与依赖 */
@@ -478,7 +481,7 @@ export async function mount(host, ctx) {
       ? Object.entries(kernel.executableSpec)
       : [];
     sheetBody.appendChild(h('div.param-section', null,
-      h('div.param-section__title', null, h('span', { textContent: '引擎与依赖' })),
+      h('div.param-section__title', null, h('span', { textContent: t('引擎与依赖') })),
       kvRows([
         ['运行时', orDash(kernel.runtimeType || (kernel.engine && kernel.engine.type))],
         ['入口', orDash(kernel.engine && kernel.engine.entry)],
@@ -492,7 +495,7 @@ export async function mount(host, ctx) {
         ? h('div', null,
           h('div.codeblock.codeblock--wrap', null,
             h('div.codeblock__bar', null,
-              h('span', { textContent: '安装命令' }),
+              h('span', { textContent: t('安装命令') }),
               inlineCopyButton(kernel.installHint, '复制')
             ),
             h('pre', { textContent: String(kernel.installHint) })
@@ -504,11 +507,11 @@ export async function mount(host, ctx) {
     /* 原始 kernel.json（折叠） */
     const raw = prettyJson(kernel.manifest, '');
     const rawFold = h('div.fold', { dataset: { open: 'false' } },
-      h('div.fold__head', null, h('span', { textContent: '原始 kernel.json' })),
+      h('div.fold__head', null, h('span', { textContent: t('原始 kernel.json') })),
       h('div.fold__body', null,
         h('div.codeblock.codeblock--wrap', null,
           h('div.codeblock__bar', null,
-            h('span', { textContent: `${raw.length} 字符` }),
+            h('span', { textContent: t('{0} 字符', { 0: raw.length }) }),
             inlineCopyButton(raw, '复制')
           ),
           h('pre', { textContent: raw })
@@ -526,7 +529,7 @@ export async function mount(host, ctx) {
     if (!executables.length) return null;
     if (kernel.status === 'ready') return null;
     return h('div.strip.strip--warn', null,
-      h('span', { textContent: `该内核的状态是「${orDash(kernel.statusLabel || kernel.status)}」，请按上面的安装命令补齐依赖后重新扫描。` })
+      h('span', { textContent: t('该内核的状态是「{0}」，请按上面的安装命令补齐依赖后重新扫描。', { 0: orDash(kernel.statusLabel || kernel.status) }) })
     );
   }
 

@@ -11,22 +11,27 @@
 
 import { h, clear, on, copyText } from '../dom.js';
 import { clockTime } from '../format.js';
+import { t } from '../i18n.js';
 
 const LEVELS = [
-  { value: 'all', label: '全部级别' },
-  { value: 'debug', label: '调试' },
-  { value: 'info', label: '信息' },
-  { value: 'warn', label: '警告' },
-  { value: 'error', label: '错误' },
+  { value: 'all', label: t('全部级别') },
+  { value: 'debug', label: t('调试') },
+  { value: 'info', label: t('信息') },
+  { value: 'warn', label: t('警告') },
+  { value: 'error', label: t('错误') },
 ];
 
 const SOURCES = [
-  { value: 'all', label: '全部来源' },
-  { value: 'main', label: '主进程' },
-  { value: 'job', label: '作业' },
+  { value: 'all', label: t('全部来源') },
+  { value: 'main', label: t('主进程') },
+  { value: 'job', label: t('作业') },
 ];
 
-const LEVEL_TEXT = { debug: '调试', info: '信息', warn: '警告', error: '错误' };
+/** 日志级别徽标文字：做成函数，这样切语言后取到的就是当前语言 */
+function levelText(level) {
+  const map = { debug: t('调试'), info: t('信息'), warn: t('警告'), error: t('错误') };
+  return map[String(level || 'info')] || String(level || '');
+}
 
 export async function mount(host, ctx) {
   const { store } = ctx;
@@ -37,35 +42,35 @@ export async function mount(host, ctx) {
 
   /* --------------------------------------------------------------- 结构 */
 
-  const levelSelect = h('select.select', { 'aria-label': '日志级别' });
+  const levelSelect = h('select.select', { 'aria-label': t('日志级别') });
   for (const item of LEVELS) levelSelect.appendChild(h('option', { value: item.value, textContent: item.label }));
 
-  const sourceSelect = h('select.select', { 'aria-label': '日志来源' });
+  const sourceSelect = h('select.select', { 'aria-label': t('日志来源') });
   for (const item of SOURCES) sourceSelect.appendChild(h('option', { value: item.value, textContent: item.label }));
 
   const searchInput = h('input.input', {
     type: 'text',
-    placeholder: '搜索内容',
-    'aria-label': '搜索日志内容',
+    placeholder: t('搜索内容'),
+    'aria-label': t('搜索日志内容'),
   });
 
   const clearBtn = h('button.btn', {
     type: 'button',
-    title: '清空主进程与本地的日志缓冲',
+    title: t('清空主进程与本地的日志缓冲'),
     on: { click: () => clearLogs() },
-  }, h('span', { textContent: '清空' }));
+  }, h('span', { textContent: t('清空') }));
 
   const copyBtn = h('button.btn', {
     type: 'button',
-    title: '复制当前过滤结果',
+    title: t('复制当前过滤结果'),
     on: { click: () => copyVisible() },
-  }, h('span', { textContent: '复制' }));
+  }, h('span', { textContent: t('复制') }));
 
   const listEl = h('div.loglist');
 
   const wrap = h('div.view-inner', { dataset: { view: 'logs' } },
     h('div.view-head', null,
-      h('h1.view-title', { textContent: '日志' }),
+      h('h1.view-title', { textContent: t('日志') }),
       h('div.view-rule')
     ),
     h('div.toolbar', null,
@@ -96,7 +101,7 @@ export async function mount(host, ctx) {
   }
 
   function lineOf(entry) {
-    return `${clockTime(entry.at)} [${LEVEL_TEXT[entry.level] || entry.level || '信息'}] ${entry.message || ''}`;
+    return t('{0} [{1}] {2}', { 0: clockTime(entry.at), 1: levelText(entry.level) || entry.level || '信息', 2: entry.message || '' });
   }
 
   /* --------------------------------------------------------------- 渲染 */
@@ -121,10 +126,10 @@ export async function mount(host, ctx) {
         const level = String(entry.level || 'info');
         frag.appendChild(h('div', {
           class: `logrow${level === 'error' ? ' logrow--error' : level === 'warn' ? ' logrow--warn' : ''}`,
-          title: entry.jobId ? `作业 ${entry.jobId}` : '主进程',
+          title: entry.jobId ? t('作业 {0}', { 0: entry.jobId }) : '主进程',
         },
           h('span.logrow__time', { textContent: clockTime(entry.at) }),
-          h('span.logrow__level', { textContent: LEVEL_TEXT[level] || level }),
+          h('span.logrow__level', { textContent: levelText(level) || level }),
           h('span.logrow__msg', { textContent: String(entry.message || '') })
         ));
       }
@@ -134,9 +139,9 @@ export async function mount(host, ctx) {
     // 实时信息推到状态栏右下角（2.0.4 起不再各视图自己放一行 .footline）
     const limit = Number((store.pick('settings') || {}).keepLogLines) || 4000;
     ctx.setStatusInfo([
-      `显示 ${rows.length} 行 / 共 ${total} 行`,
-      `最多保留 ${limit} 行`,
-      pinned ? null : { text: '已暂停跟随，滚动到底部可恢复', tone: 'warn' },
+      t('显示 {0} 行 / 共 {1} 行', { 0: rows.length, 1: total }),
+      t('最多保留 {0} 行', { 0: limit }),
+      pinned ? null : { text: t('已暂停跟随，滚动到底部可恢复'), tone: 'warn' },
     ]);
 
     if (pinned) host.scrollTop = host.scrollHeight;
@@ -146,28 +151,28 @@ export async function mount(host, ctx) {
 
   async function clearLogs() {
     if (!(store.pick('logs') || []).length) {
-      ctx.toast.info('日志已经是空的');
+      ctx.toast.info(t('日志已经是空的'));
       return;
     }
-    if (!(await ctx.modal.confirm('清空全部日志？', { okLabel: '清空', danger: true }))) return;
+    if (!(await ctx.modal.confirm(t('清空全部日志？'), { okLabel: t('清空'), danger: true }))) return;
     try {
       await window.khs.logs.clear();
       store.set({ logs: [], logCount: 0, logErrorCount: 0 });
-      ctx.toast.success('日志已清空');
+      ctx.toast.success(t('日志已清空'));
     } catch (err) {
-      ctx.reportError('清空日志失败', ctx.wrapError(err));
+      ctx.reportError(t('清空日志失败'), ctx.wrapError(err));
     }
   }
 
   async function copyVisible() {
     const rows = filtered();
     if (!rows.length) {
-      ctx.toast.warn('没有可复制的内容');
+      ctx.toast.warn(t('没有可复制的内容'));
       return;
     }
     const ok = await copyText(rows.map(lineOf).join('\n'));
-    if (ok) ctx.toast.success('日志已复制', { text: `${rows.length} 行` });
-    else ctx.toast.warn('复制失败', '当前环境不允许访问剪贴板，请手动选择文本');
+    if (ok) ctx.toast.success(t('日志已复制'), { text: t('{0} 行', { 0: rows.length }) });
+    else ctx.toast.warn(t('复制失败'), '当前环境不允许访问剪贴板，请手动选择文本');
   }
 
   /* --------------------------------------------------------------- 事件 */

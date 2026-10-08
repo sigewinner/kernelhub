@@ -276,10 +276,30 @@
   gap: var(--sp-2);
 }
 
-.field__hint {
+/**
+ * 说明性小字已取消（2.2.3）。
+ *
+ * 原来有一类 .field__hint 专门放「这个选项是干什么的」这类解释文字，
+ * 例如「队列同时执行的作业数量；改小可以减轻机器压力…」。它平时一直占版面，
+ * 而真正需要它的时刻只有「你要改这个值」的一瞬间 —— 现在这类说明一律挂到 title 上，
+ * 鼠标停上去才出现（见 settings.js 的 field()）。
+ *
+ * 剩下这些 .note-line 承载的不是解释，而是**内容**：空状态、数据描述、结构标签。
+ * 它们照旧显示，只是不再和「说明小字」共用同一个类名。
+ */
+.note-line {
   font-size: var(--fs-12);
-  color: var(--c-ink-3);
+  color: var(--c-ink-2);
   line-height: var(--lh-snug);
+}
+
+.note-line.dim,
+.note-line--dim {
+  color: var(--c-ink-3);
+}
+
+.note-line.mono {
+  font-family: var(--font-mono);
 }
 
 .field__head {
@@ -593,6 +613,14 @@
 
 .upd-progress .progress-label {
   color: var(--c-ink-3);
+}
+
+/* 更新结果说明（下载成功/失败等），2.2.3 起独立成类，不再借 field__hint */
+.upd-note {
+  font-size: var(--fs-12);
+  color: var(--c-ink-3);
+  line-height: var(--lh-snug);
+  word-break: break-word;
 }
 
 /* ------------------------------------------------------------------ 统计 */

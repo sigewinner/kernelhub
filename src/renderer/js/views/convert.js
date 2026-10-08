@@ -24,6 +24,7 @@ import { icon } from '../icons.js';
 import { createParamPanel } from '../controls.js';
 import { createSheet } from '../sheet.js';
 import { humanSize, thousands, formatLabel, orDash, percent } from '../format.js';
+import { t } from '../i18n.js';
 
 export async function mount(host, ctx) {
   const { store, navigate } = ctx;
@@ -55,47 +56,47 @@ export async function mount(host, ctx) {
   /* --------------------------------------------------------------- 结构 */
 
   /* --- 目标格式下拉（工具栏右侧，唯一入口） --- */
-  const dstSelect = h('select.select', { dataset: { role: 'target' }, 'aria-label': '目标格式' });
+  const dstSelect = h('select.select', { dataset: { role: 'target' }, 'aria-label': t('目标格式') });
 
   const addBtn = h('button.btn', {
     type: 'button',
-    title: '添加文件到待转换列表',
+    title: t('添加文件到待转换列表'),
     on: { click: () => ctx.pickFiles() },
-  }, h('span', { textContent: '添加文件' }));
+  }, h('span', { textContent: t('添加文件') }));
 
   const clearBtn = h('button.btn', {
     type: 'button',
-    title: '清空待转换列表（不会删除磁盘文件）',
+    title: t('清空待转换列表（不会删除磁盘文件）'),
     on: {
       click: async () => {
         if (!store.pick('pending').length) return;
-        if (await ctx.modal.confirm('清空待转换列表？', { okLabel: '清空', danger: true })) ctx.clearPending();
+        if (await ctx.modal.confirm(t('清空待转换列表？'), { okLabel: t('清空'), danger: true })) ctx.clearPending();
       },
     },
-  }, h('span', { textContent: '清空列表' }));
+  }, h('span', { textContent: t('清空列表') }));
 
   const advancedBtn = h('button.btn', {
     type: 'button',
-    title: '内核参数、输出目录、命令行预览',
+    title: t('内核参数、输出目录、命令行预览'),
     on: {
       click: () => {
         sheet.open();
         refreshPreviewIfOpen();
       },
     },
-  }, h('span', { textContent: '高级' }));
+  }, h('span', { textContent: t('高级') }));
 
   const startBtn = h('button.btn.btn--primary', {
     type: 'button',
-    title: '把待转换列表提交到队列（Ctrl/Cmd+Enter）',
+    title: t('把待转换列表提交到队列（Ctrl/Cmd+Enter）'),
     on: { click: () => startConversion() },
-  }, h('span', { textContent: '开始转换' }));
+  }, h('span', { textContent: t('开始转换') }));
 
   const toolbar = h('div.toolbar', null,
     addBtn,
     clearBtn,
     h('div.toolbar__right', null,
-      h('label.label', { style: { marginBottom: '0' }, textContent: '目标格式' }),
+      h('label.label', { style: { marginBottom: '0' }, textContent: t('目标格式') }),
       h('div.selectwrap', { style: { width: '160px' } }, dstSelect),
       h('div.toolbar__sep'),
       advancedBtn,
@@ -113,21 +114,21 @@ export async function mount(host, ctx) {
       h('col', { style: { width: '8%' } })
     ),
     h('thead', null, h('tr', null,
-      h('th', { textContent: '文件名' }),
-      h('th', { textContent: '格式' }),
-      h('th', { class: 'num', textContent: '大小' }),
-      h('th', { class: 'num', textContent: '移除' })
+      h('th', { textContent: t('文件名') }),
+      h('th', { textContent: t('格式') }),
+      h('th', { class: 'num', textContent: t('大小') }),
+      h('th', { class: 'num', textContent: t('移除') })
     )),
     fileBody
   );
   const fileEmpty = h('div.empty', null,
-    h('div.empty__title', { textContent: '还没有待转换文件' }),
-    h('div.empty__text', { textContent: '把文件或文件夹拖到这里，或点「选择文件」。目录会被递归展开。' }),
+    h('div.empty__title', { textContent: t('还没有待转换文件') }),
+    h('div.empty__text', { textContent: t('把文件或文件夹拖到这里，或点「选择文件」。目录会被递归展开。') }),
     h('div.empty__actions', null,
       h('button.btn.btn--primary', {
         type: 'button',
         on: { click: () => ctx.pickFiles() },
-      }, h('span', { textContent: '选择文件' }))
+      }, h('span', { textContent: t('选择文件') }))
     )
   );
   const fileSummaryEl = h('div.filelist__summary');
@@ -135,7 +136,7 @@ export async function mount(host, ctx) {
 
   /* --- 右：任务摘要 --- */
   const chosenValueEl = h('span.summary-line__v', { textContent: '—' });
-  const outputValueEl = h('span.summary-line__v', { textContent: '与源文件同目录' });
+  const outputValueEl = h('span.summary-line__v', { textContent: t('与源文件同目录') });
   const progressHost = h('div.panel.hidden');
 
   const sameDirCheck = h('input.check', { type: 'checkbox', checked: true });
@@ -147,28 +148,28 @@ export async function mount(host, ctx) {
   });
 
   const summaryPanel = h('section.panel', null,
-    h('div.panel__head', null, h('div.panel__title', { textContent: '任务摘要' })),
+    h('div.panel__head', null, h('div.panel__title', { textContent: t('任务摘要') })),
     h('div.summary-list', null,
       h('div.summary-line', null,
-        h('span.summary-line__k', { textContent: '目标格式' }),
+        h('span.summary-line__k', { textContent: t('目标格式') }),
         h('span.summary-line__v', { dataset: { role: 'target-summary' }, textContent: '—' })
       ),
       h('div.summary-line', null,
-        h('span.summary-line__k', { textContent: '将使用' }),
+        h('span.summary-line__k', { textContent: t('将使用') }),
         chosenValueEl
       ),
       h('div.summary-line', null,
-        h('span.summary-line__k', { textContent: '输出' }),
+        h('span.summary-line__k', { textContent: t('输出') }),
         outputValueEl
       ),
-      h('label.check-row', null, sameDirCheck, h('span', { textContent: '与源文件同目录' }))
+      h('label.check-row', null, sameDirCheck, h('span', { textContent: t('与源文件同目录') }))
     ),
     progressHost
   );
 
   const wrap = h('div.view-inner', null,
     h('div.view-head', null,
-      h('h1.view-title', { textContent: '转换' }),
+      h('h1.view-title', { textContent: t('转换') }),
       h('div.view-rule')
     ),
     toolbar,
@@ -183,23 +184,23 @@ export async function mount(host, ctx) {
 
   const sheet = createSheet(host, {
     id: 'convert-advanced',
-    title: '高级',
-    subtitle: '内核参数 / 输出目录 / 命令行预览',
+    title: t('高级'),
+    subtitle: t('内核参数 / 输出目录 / 命令行预览'),
   });
 
-  const kernelSelect = h('select.select', { 'aria-label': '使用内核' });
+  const kernelSelect = h('select.select', { 'aria-label': t('使用内核') });
   const candidateFlow = h('div.tagflow');
   const kernelSection = h('div.param-section', null,
-    h('div.param-section__title', null, h('span', { textContent: '使用内核' })),
-    h('div.field', null, h('label.label', { textContent: '内核' }), h('div.selectwrap', null, kernelSelect)),
+    h('div.param-section__title', null, h('span', { textContent: t('使用内核') })),
+    h('div.field', null, h('label.label', { textContent: t('内核') }), h('div.selectwrap', null, kernelSelect)),
     candidateFlow
   );
 
   const outDirInput = h('input.input.input--mono', {
     type: 'text',
     value: vs.outDir,
-    placeholder: '未指定（与源文件同目录）',
-    'aria-label': '输出目录',
+    placeholder: t('未指定（与源文件同目录）'),
+    'aria-label': t('输出目录'),
   });
   outDirInput.addEventListener('change', () => {
     vs.outDir = outDirInput.value.trim();
@@ -209,11 +210,11 @@ export async function mount(host, ctx) {
   });
   const outDirPickBtn = iconAction({
     classes: ['iconbtn'],
-    label: '选择输出目录',
+    label: t('选择输出目录'),
     children: [icon('folderOpen', { size: 15 })],
     onClick: async () => {
       try {
-        const res = await window.khs.fs.pickFolder({ title: '选择输出目录', defaultPath: vs.outDir || undefined });
+        const res = await window.khs.fs.pickFolder({ title: t('选择输出目录'), defaultPath: vs.outDir || undefined });
         if (res && res.folder) {
           vs.outDir = res.folder;
           outDirInput.value = res.folder;
@@ -222,18 +223,18 @@ export async function mount(host, ctx) {
           refreshPreviewIfOpen();
         }
       } catch (err) {
-        ctx.reportError('选择输出目录失败', ctx.wrapError(err));
+        ctx.reportError(t('选择输出目录失败'), ctx.wrapError(err));
       }
     },
   });
   const outDirSection = h('div.param-section', null,
     h('div.param-section__title', null, h('span', {
-      textContent: '输出目录',
+      textContent: t('输出目录'),
       // 2.1.0：说明不再占一行小字，改为悬停提示
-      title: '勾选「与源文件同目录」时，每个产物留在各自源文件所在目录。',
+      title: t('勾选「与源文件同目录」时，每个产物留在各自源文件所在目录。'),
     })),
     h('div.field', null,
-      h('label.label', { textContent: '目录' }),
+      h('label.label', { textContent: t('目录') }),
       h('div.path-row', null, outDirInput, outDirPickBtn)
     )
   );
@@ -242,7 +243,7 @@ export async function mount(host, ctx) {
   const paramPanel = createParamPanel(paramHost, { onChange: () => {} });
   const paramSection = h('div.param-section', null,
     h('div.param-section__title', null,
-      h('span', { textContent: '内核参数' }),
+      h('span', { textContent: t('内核参数') }),
       h('span.badge.badge--mono', { dataset: { role: 'param-count' }, textContent: '0' })
     ),
     paramHost
@@ -251,36 +252,36 @@ export async function mount(host, ctx) {
   const previewPre = h('pre', { textContent: '—' });
   const previewCopyBtn = h('button.btn.btn--quiet.btn--sm', {
     type: 'button',
-    title: '复制命令行',
+    title: t('复制命令行'),
     on: {
       click: async () => {
         const text = previewCommandText();
         if (!text) return;
         const ok = await copyText(text);
-        if (ok) ctx.toast.success('已复制命令行');
-        else ctx.toast.warn('复制失败', '当前环境不允许访问剪贴板');
+        if (ok) ctx.toast.success(t('已复制命令行'));
+        else ctx.toast.warn(t('复制失败'), '当前环境不允许访问剪贴板');
       },
     },
-  }, h('span', { textContent: '复制' }));
+  }, h('span', { textContent: t('复制') }));
   const previewSection = h('div.param-section', null,
     h('div.param-section__title', null,
-      h('span', { textContent: '命令行预览' }),
+      h('span', { textContent: t('命令行预览') }),
       h('span.grow'),
       previewCopyBtn
     ),
-    h('div.codeblock.codeblock--wrap', null, h('div.codeblock__bar', null, h('span', { textContent: '只读 · 不会执行' })), previewPre)
+    h('div.codeblock.codeblock--wrap', null, h('div.codeblock__bar', null, h('span', { textContent: t('只读 · 不会执行') })), previewPre)
   );
 
   const resetBtn = h('button.btn', {
     type: 'button',
-    title: '把全部参数恢复为该内核声明的默认值',
+    title: t('把全部参数恢复为该内核声明的默认值'),
     on: {
       click: () => {
         paramPanel.reset();
-        ctx.toast.info('参数已复位为默认值');
+        ctx.toast.info(t('参数已复位为默认值'));
       },
     },
-  }, h('span', { textContent: '复位为默认值' }));
+  }, h('span', { textContent: t('复位为默认值') }));
 
   sheet.body.appendChild(kernelSection);
   sheet.body.appendChild(outDirSection);
@@ -313,7 +314,7 @@ export async function mount(host, ctx) {
         res = await window.khs.plan.targets({ op: vs.op || undefined, kernelId: vs.kernelId || undefined });
       } catch (err) {
         if (seq !== vs.seq) return;
-        ctx.reportError('读取目标格式失败', ctx.wrapError(err));
+        ctx.reportError(t('读取目标格式失败'), ctx.wrapError(err));
       }
       if (seq !== vs.seq) return;
       vs.sourceFormat = '';
@@ -332,7 +333,7 @@ export async function mount(host, ctx) {
       res = await window.khs.plan.targets({ sourcePath: first.path, op: vs.op || undefined, kernelId: vs.kernelId || undefined });
     } catch (err) {
       if (seq !== vs.seq) return;
-      ctx.reportError('读取目标格式失败', ctx.wrapError(err));
+      ctx.reportError(t('读取目标格式失败'), ctx.wrapError(err));
       return;
     }
     // 指定内核却拿不到目标时，退化为自动选择再试一次，避免死路
@@ -341,7 +342,7 @@ export async function mount(host, ctx) {
         const limited = await window.khs.plan.targets({ sourcePath: first.path, op: vs.op || undefined });
         if (seq !== vs.seq) return;
         if (limited && Array.isArray(limited.targets) && limited.targets.length) {
-          ctx.toast.warn('所选内核没有可用目标格式', { text: '已自动切回「自动选择内核」。' });
+          ctx.toast.warn(t('所选内核没有可用目标格式'), { text: t('已自动切回「自动选择内核」。') });
           vs.kernelId = '';
           kernelSelect.value = '';
           res = limited;
@@ -382,7 +383,7 @@ export async function mount(host, ctx) {
         paramsRes = await window.khs.plan.params({ op: vs.op, dstFmt: vs.dstFmt, kernelId: '' });
       } catch (err) {
         if (seq !== vs.seq) return;
-        ctx.reportError('读取参数声明失败', ctx.wrapError(err));
+        ctx.reportError(t('读取参数声明失败'), ctx.wrapError(err));
       }
       if (seq !== vs.seq) return;
       vs.chosen = null;
@@ -415,7 +416,7 @@ export async function mount(host, ctx) {
       paramsRes = params || null;
     } catch (err) {
       if (seq !== vs.seq) return;
-      ctx.reportError('计算选核/参数失败', ctx.wrapError(err));
+      ctx.reportError(t('计算选核/参数失败'), ctx.wrapError(err));
       return;
     }
     if (seq !== vs.seq) return;
@@ -429,7 +430,7 @@ export async function mount(host, ctx) {
         paramsRes = await window.khs.plan.params({ ...base, kernelId: '' });
       } catch (err) {
         if (seq !== vs.seq) return;
-        ctx.reportError('读取参数声明失败', ctx.wrapError(err));
+        ctx.reportError(t('读取参数声明失败'), ctx.wrapError(err));
         paramsRes = null;
       }
       if (seq !== vs.seq) return;
@@ -462,7 +463,14 @@ export async function mount(host, ctx) {
     const summary = wrap.querySelector('[data-role="target-summary"]');
     if (summary) {
       summary.textContent = vs.dstFmt
-        ? `${formatLabel(vs.dstFmt)}${vs.sourceFormat ? `（源 ${formatLabel(vs.sourceFormat)}）` : vs.targetsFallback ? '（尚未添加文件）' : ''}`
+        ? t('{0}{1}', {
+          0: formatLabel(vs.dstFmt),
+          1: vs.sourceFormat
+            ? t('（源 {0}）', { 0: formatLabel(vs.sourceFormat) })
+            : vs.targetsFallback
+              ? t('（尚未添加文件）')
+              : '',
+        })
         : '—';
     }
   }
@@ -471,7 +479,7 @@ export async function mount(host, ctx) {
     const kernels = (store.pick('kernels') || []).filter((k) => k.status === 'ready');
     const prev = vs.kernelId;
     clear(kernelSelect);
-    kernelSelect.appendChild(h('option', { value: '', textContent: '自动选择（按质量与优先级）' }));
+    kernelSelect.appendChild(h('option', { value: '', textContent: t('自动选择（按质量与优先级）') }));
     for (const k of kernels) {
       kernelSelect.appendChild(h('option', {
         value: k.id,
@@ -482,7 +490,7 @@ export async function mount(host, ctx) {
     kernelSelect.value = vs.kernelId;
     // 2.1.0：原先「共 N 个可用内核…」那行小字改为悬停提示
     kernelSelect.title = kernels.length
-      ? `共 ${kernels.length} 个可用内核；指定内核后目标格式会按其能力收敛。`
+      ? t('共 {0} 个可用内核；指定内核后目标格式会按其能力收敛。', { 0: kernels.length })
       : '当前没有可用内核：到「插件」页安装插件，或在「已安装」里看依赖缺失的原因。';
   }
 
@@ -491,13 +499,13 @@ export async function mount(host, ctx) {
     const files = store.pick('pending');
 
     if (files.length && chosen && chosen.error) {
-      chosenValueEl.textContent = `无可用内核：${chosen.error}`;
+      chosenValueEl.textContent = t('无可用内核：{0}', { 0: chosen.error });
       chosenValueEl.className = 'summary-line__v accent';
     } else if (chosen) {
       chosenValueEl.textContent = `${chosen.name || chosen.id}${chosen.engineNote ? ` · ${chosen.engineNote}` : ''}`;
       chosenValueEl.className = 'summary-line__v';
     } else if (vs.paramsFallback && vs.kernelNote) {
-      chosenValueEl.textContent = '—（尚未添加文件）';
+      chosenValueEl.textContent = t('—（尚未添加文件）');
       chosenValueEl.className = 'summary-line__v';
     } else {
       chosenValueEl.textContent = '—';
@@ -517,7 +525,7 @@ export async function mount(host, ctx) {
   function renderParamCount() {
     const counts = paramPanel.counts();
     const badge = sheet.el.querySelector('[data-role="param-count"]');
-    if (badge) badge.textContent = counts.total ? `${counts.visible} / ${counts.total} 项参数` : '无参数';
+    if (badge) badge.textContent = counts.total ? t('{0} / {1} 项参数', { 0: counts.visible, 1: counts.total }) : '无参数';
   }
 
   function renderFileList() {
@@ -538,7 +546,7 @@ export async function mount(host, ctx) {
           // 行操作不渲染成 <button>：否则 20 个文件就是 20 个按钮
           iconAction({
             classes: ['iconbtn'],
-            label: `移除 ${file.name || ''}`,
+            label: t('移除 {0}', { 0: file.name || '' }),
             children: [h('span', { textContent: '✕' })],
             onClick: () => ctx.removePendingFile(file.path),
           })
@@ -564,11 +572,11 @@ export async function mount(host, ctx) {
     for (const [key, n] of counts) {
       if (n > best) { best = n; dominant = key; }
     }
-    fileSummaryEl.appendChild(h('span', { textContent: `${thousands(files.length)} 个文件` }));
+    fileSummaryEl.appendChild(h('span', { textContent: t('{0} 个文件', { 0: thousands(files.length) }) }));
     fileSummaryEl.appendChild(h('span', { textContent: '·' }));
-    fileSummaryEl.appendChild(h('span', { textContent: `合计 ${humanSize(totalBytes)}` }));
+    fileSummaryEl.appendChild(h('span', { textContent: t('合计 {0}', { 0: humanSize(totalBytes) }) }));
     fileSummaryEl.appendChild(h('span', { textContent: '·' }));
-    fileSummaryEl.appendChild(h('span', { textContent: `主格式 ${formatLabel(dominant)}` }));
+    fileSummaryEl.appendChild(h('span', { textContent: t('主格式 {0}', { 0: formatLabel(dominant) }) }));
   }
 
   function syncOutDirUi() {
@@ -576,7 +584,9 @@ export async function mount(host, ctx) {
     outDirPickBtn.disabled = vs.sameDir;
     sameDirCheck.checked = vs.sameDir;
     outDirInput.value = vs.outDir;
-    outDirInput.placeholder = vs.sameDir ? '（已选择与源文件同目录）' : '未指定（与源文件同目录）';
+    outDirInput.placeholder = vs.sameDir
+      ? t('（已选择与源文件同目录）')
+      : t('未指定（与源文件同目录）');
   }
 
   /**
@@ -586,7 +596,7 @@ export async function mount(host, ctx) {
    * （属于实时信息，和队列/内核的数字放一起才对）。摘要卡片只留一行状态提示。
    */
   function renderSummary() {
-    outputValueEl.textContent = vs.sameDir ? '与源文件同目录' : (vs.outDir || '源文件所在目录');
+    outputValueEl.textContent = vs.sameDir ? t('与源文件同目录') : vs.outDir || t('源文件所在目录');
 
     const ids = store.pick('lastRunIds') || [];
     const jobs = store.pick('jobs') || new Map();
@@ -604,10 +614,10 @@ export async function mount(host, ctx) {
     const finished = run.filter((j) => j.state === 'done' || j.state === 'failed' || j.state === 'cancelled');
     const started = Math.min(...finished.map((j) => Number(j.startedAt) || Number(j.addedAt) || Date.now()));
     const ended = Math.max(...finished.map((j) => Number(j.finishedAt) || Date.now()));
-    const elapsed = finished.length ? ` · 用时 ${((Math.max(0, ended - started)) / 1000).toFixed(1)} s` : '';
+    const elapsed = finished.length ? t(' · 用时 {0} s', { 0: ((Math.max(0, ended - started)) / 1000).toFixed(1) }) : '';
 
     ctx.setStatusInfo(convertStatusInfo({
-      text: `上次结果：成功 ${done} · 失败 ${failed}${elapsed}`,
+      text: t('上次结果：成功 {0} · 失败 {1}{2}', { 0: done, 1: failed, 2: elapsed }),
       tone: failed ? 'err' : 'ok',
     }));
   }
@@ -617,8 +627,12 @@ export async function mount(host, ctx) {
     const pending = store.pick('pending') || [];
     const items = [];
     if (lastResult) items.push(lastResult);
-    items.push(`${pending.length} 个待转换文件`);
-    items.push(vs.sameDir ? '输出：与源文件同目录' : `输出：${vs.outDir || '源文件所在目录'}`);
+    items.push(t('{0} 个待转换文件', { 0: pending.length }));
+    items.push(
+      vs.sameDir
+        ? t('输出：与源文件同目录')
+        : t('输出：{0}', { 0: vs.outDir || t('源文件所在目录') })
+    );
     return items;
   }
 
@@ -692,7 +706,7 @@ export async function mount(host, ctx) {
       return;
     }
     if (p.ok === false) {
-      previewPre.textContent = `${p.code || 'ERROR'}：${p.message || '未知原因'}`;
+      previewPre.textContent = t('{0}：{1}', { 0: p.code || 'ERROR', 1: p.message || '未知原因' });
       previewPre.classList.add('accent');
       previewPre.title = '预览失败不影响其它配置。';
       previewCopyBtn.disabled = true;
@@ -705,10 +719,10 @@ export async function mount(host, ctx) {
       lines.push(...p.adapterArgv.map((a) => (/[\s"]/.test(a) ? JSON.stringify(a) : a)));
     }
     previewPre.textContent = lines.length ? lines.join(' ') : '（该内核没有可展开的命令行）';
-    const base = p.note ? String(p.note) : `内核 ${orDash(p.kernel && (p.kernel.name || p.kernel.id))} · 输出 ${(p.outputs || []).length} 个文件`;
+    const base = p.note ? String(p.note) : t('内核 {0} · 输出 {1} 个文件', { 0: orDash(p.kernel && (p.kernel.name || p.kernel.id)), 1: (p.outputs || []).length });
     // 2.1.0：原先预览下方那行说明小字改为悬停提示
     previewPre.title = store.pick('pending').length > 1
-      ? `${base}（预览取列表第一个文件为例；队列会按每个文件各自的源格式逐个执行）`
+      ? t('{0}（预览取列表第一个文件为例；队列会按每个文件各自的源格式逐个执行）', { 0: base })
       : base;
     previewCopyBtn.disabled = !lines.length;
   }
@@ -740,32 +754,32 @@ export async function mount(host, ctx) {
   async function startConversion() {
     const req = buildRequest();
     if (!req.sources.length) {
-      ctx.toast.warn('没有待转换文件', { text: '请先添加文件。' });
+      ctx.toast.warn(t('没有待转换文件'), { text: t('请先添加文件。') });
       return;
     }
     if (!req.targetFormat) {
-      ctx.toast.warn('没有目标格式', { text: '请先选择目标格式。' });
+      ctx.toast.warn(t('没有目标格式'), { text: t('请先选择目标格式。') });
       return;
     }
     try {
       const res = await window.khs.queue.enqueue(req);
       const jobs = (res && Array.isArray(res.jobs)) ? res.jobs : [];
       if (!jobs.length) {
-        ctx.toast.warn('没有作业入队', { text: '主进程没有为这些文件创建作业，请检查文件是否仍然存在。' });
+        ctx.toast.warn(t('没有作业入队'), { text: t('主进程没有为这些文件创建作业，请检查文件是否仍然存在。') });
         return;
       }
       store.set({ lastRunIds: jobs.map((j) => j.id) });
       if (!vs.sameDir && vs.outDir && vs.outDir !== (store.pick('settings') || {}).lastOutputDir) {
         ctx.patchSettings({ lastOutputDir: vs.outDir }, { silent: true });
       }
-      ctx.toast.success(`已加入队列：${jobs.length} 个作业`, {
-        text: `${formatLabel(vs.sourceFormat)} → ${formatLabel(req.targetFormat)} · ${(vs.chosen && vs.chosen.name) || '自动选核'}`,
-        actions: [{ label: '查看队列', run: () => navigate('#/batch') }],
+      ctx.toast.success(t('已加入队列：{0} 个作业', { 0: jobs.length }), {
+        text: t('{0} → {1} · {2}', { 0: formatLabel(vs.sourceFormat), 1: formatLabel(req.targetFormat), 2: (vs.chosen && vs.chosen.name) || '自动选核' }),
+        actions: [{ label: t('查看队列'), run: () => navigate('#/batch') }],
       });
       ctx.clearPending();
       renderSummary();
     } catch (err) {
-      ctx.reportError('加入队列失败', ctx.wrapError(err));
+      ctx.reportError(t('加入队列失败'), ctx.wrapError(err));
     }
   }
 
@@ -815,10 +829,10 @@ export async function mount(host, ctx) {
         }
       }
       if (!paths.length) {
-        ctx.toast.warn('没有识别到文件路径', { text: '请改用「添加文件」按钮。' });
+        ctx.toast.warn(t('没有识别到文件路径'), { text: t('请改用「添加文件」按钮。') });
         return;
       }
-      await ctx.expandPaths(paths, { navigateAfter: false, label: '拖入内容' });
+      await ctx.expandPaths(paths, { navigateAfter: false, label: t('拖入内容') });
     }));
   }
 
