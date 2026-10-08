@@ -239,6 +239,21 @@ const EN = {
   '下载安装包并启动安装向导': 'Download the installer and launch the setup wizard',
   '查看更新说明': 'Release notes',
   '在浏览器里打开 Release 页面': 'Open the release page in your browser',
+  '检测失败：{error}': 'Check failed: {error}',
+  '下载失败：{error}': 'Download failed: {error}',
+  '下载失败': 'Download failed',
+  '下载异常：{error}': 'Download error: {error}',
+  '已下载到 {path}，但启动安装程序失败：{error}': 'Downloaded to {path}, but launching the installer failed: {error}',
+  '下载并静默安装': 'Download & install',
+  '下载后静默安装到第一次安装时选定的目录': 'Download, then install silently into the folder chosen at first install',
+  '安装包已下载（{size}）并已静默启动：会按第一次安装时的设置在后台完成更新，本窗口稍后会自动关闭。':
+    'The installer ({size}) has been downloaded and started silently: it updates in the background using the settings from your first install, and this window will close shortly.',
+  '发现新版本 {latest}（{major}.x 系列）。更新会关闭本窗口并静默安装到第一次安装时选定的目录，完成后重新打开即可；已安装的插件与设置不会丢。':
+    'Version {latest} is available in the {major}.x line. Updating closes this window and installs silently into the folder chosen at first install; reopen the app afterwards. Installed plugins and settings are kept.',
+  '下载完成，正在静默安装…': 'Download complete, installing silently…',
+  '便携版不会自动替换正在运行的程序：已在资源管理器中打开 {path}，用新版本覆盖即可。':
+    'The portable build cannot replace itself while running: {path} has been opened in Explorer — overwrite it with the new version.',
+  '准备下载…': 'Preparing download…',
   '开始下载…': 'Starting download…',
   '下载中 {percent}%（{got} / {total}）': 'Downloading {percent}% ({got} / {total})',
   '下载完成，正在启动安装向导…': 'Download complete, launching the setup wizard…',

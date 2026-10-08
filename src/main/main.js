@@ -11,6 +11,7 @@
  */
 
 const { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, Menu } = require('electron');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -49,6 +50,24 @@ let queue = null;
 let pluginStore = null;
 /** 上一次算显示名时是否有变化（目录首次拉到会补上限定名） */
 let displayNamesChanged = false;
+
+/**
+ * 是否运行在便携版里（2.2.2）。
+ * electron-builder 的 portable 目标会把程序解压到临时目录再启动，并设置
+ * PORTABLE_EXECUTABLE_FILE / PORTABLE_EXECUTABLE_DIR —— 这是可靠判据。
+ * 用途：便携版没有「安装目录」可言，更新时不能替用户静默装到默认位置。
+ */
+function isPortableBuild() {
+  return Boolean(process.env.PORTABLE_EXECUTABLE_FILE || process.env.PORTABLE_EXECUTABLE_DIR);
+}
+
+/**
+ * 静默安装的参数（2.2.2）。提成常量是为了能在自检里断言 —— 这条一旦写错，
+ * 用户更新时就会又看到安装向导（或装到错误的目录）。
+ *   /S         静默，无界面
+ *   --updated  electron-builder NSIS 的更新模式：不询问，并先结束正在运行的实例
+ */
+const SILENT_INSTALL_ARGS = ['/S', '--updated'];
 
 /* ------------------------------------------------------------------ 中枢 */
 
@@ -601,8 +620,18 @@ function registerIpc() {
   });
 
   /**
-   * 下载安装包，并（可选）立刻启动安装向导。
+   * 下载安装包，并（可选）**静默安装**。
    * 下载进度经 evt:update:progress 回到界面。
+   *
+   * 2.2.2：不再弹安装向导。
+   * 之前是 shell.openPath(setup.exe)，会走完整的 NSIS 向导（欢迎 → 选目录 → 安装 → 完成），
+   * 而「选目录」这一步对更新毫无意义 —— electron-builder 的 NSIS 会把首次安装选定的目录
+   * 记在注册表 InstallLocation 里，静默安装会直接沿用，也就是「按第一次用户的设置就好」。
+   *
+   * 参数说明：
+   *   /S         静默安装（无界面）
+   *   --updated  electron-builder NSIS 的更新模式：不询问、并先结束正在运行的实例，
+   *              否则文件被占用会替换失败
    */
   handle('update:download', async ({ url, name, size, launch } = {}) => {
     const asset = { url, name: name || 'KernelHub-Studio-setup.exe', size: Number(size) || 0 };
@@ -626,9 +655,24 @@ function registerIpc() {
     }
     send({ phase: 'done', percent: 100, message: '下载完成' });
     if (launch) {
-      const err = await shell.openPath(result.path);
-      if (err) return { ...result, launchError: String(err) };
-      return { ...result, launched: true };
+      const mode = isPortableBuild() ? 'portable' : 'installed';
+      if (mode === 'portable') {
+        // 便携版是单文件自解压，跑 setup.exe 只会另装一份到默认目录 ——
+        // 不替用户做这个决定，打开所在目录让他自行替换。
+        shell.showItemInFolder(result.path);
+        return { ...result, mode, needsManual: true };
+      }
+      try {
+        const child = spawn(result.path, SILENT_INSTALL_ARGS, {
+          detached: true,
+          stdio: 'ignore',
+          windowsHide: true,
+        });
+        child.unref();
+      } catch (err) {
+        return { ...result, mode, launchError: String((err && err.message) || err) };
+      }
+      return { ...result, mode, launched: true, silent: true };
     }
     return result;
   });
@@ -1503,6 +1547,98 @@ async function runSelfTest() {
         '检测更新可用（按大版本取 GitHub Release）',
         Boolean(upd && upd.ok && upd.current && upd.latest),
         upd ? `当前=${upd.current} 同大版本最新=${upd.latest} 有更新=${Boolean(upd.hasUpdate)}${upd.error ? ` 错误=${upd.error}` : ''}` : '取不到检测结果'
+      );
+
+      /* ---- 2.2.2：更新不再整页重绘（频闪），并加进度条、改静默安装 ---- */
+
+      // 点一次「检测更新」，断言整块设置面板没有被重建。
+      // 频闪的根因就是每次状态变化都 renderPane() → 面板重建 + 重播淡入动画。
+      const paneBefore = await js(`(() => {
+        const pane = document.querySelector('.settings-pane');
+        if (!pane) return null;
+        window.__khsPaneProbe = pane.firstElementChild;
+        return { children: pane.children.length, first: pane.firstElementChild ? pane.firstElementChild.className : '' };
+      })()`);
+      const clickedCheck = await js(`(() => {
+        const btn = Array.from(document.querySelectorAll('.settings-pane button.btn')).find((b) => /检测更新|Check for updates/.test(b.innerText));
+        if (!btn) return false;
+        btn.click();
+        return true;
+      })()`);
+      await settle(1500);
+      const paneAfter = await js(`(() => {
+        const pane = document.querySelector('.settings-pane');
+        if (!pane) return null;
+        return {
+          sameFirst: pane.firstElementChild === window.__khsPaneProbe,
+          children: pane.children.length,
+          first: pane.firstElementChild ? pane.firstElementChild.className : '',
+        };
+      })()`);
+      step(
+        '点「检测更新」不会重建整块设置面板（消除频闪）',
+        Boolean(paneBefore && paneAfter && clickedCheck && paneAfter.sameFirst),
+        paneAfter
+          ? `点击=${clickedCheck ? '已触发' : '未找到按钮'} 面板根节点未变=${paneAfter.sameFirst} 分组数 ${paneBefore ? paneBefore.children : '?'}→${paneAfter.children}`
+          : '取不到面板状态'
+      );
+
+      // 直接推几条进度事件，验证进度条就地刷新且宽度跟着走。
+      // 先让渲染层自己挂一个计数监听，把「事件有没有送到」和「我的处理器有没有生效」分开看。
+      await js(`(() => {
+        window.__evtCount = 0;
+        window.__evtLast = null;
+        window.khs.on('evt:update:progress', (p) => { window.__evtCount += 1; window.__evtLast = p; });
+        return true;
+      })()`);
+      const progressProbe = await (async () => {
+        // 注意：自检跑在 probeWin 这个隐藏窗口里，不是 mainWindow ——
+        // 事件必须发给 probeWin，否则渲染层什么也收不到（这条我踩过一次）。
+        if (probeWin && !probeWin.isDestroyed()) {
+          probeWin.webContents.send('evt:update:progress', { phase: 'start', percent: 0, received: 0, total: 1000 });
+          probeWin.webContents.send('evt:update:progress', { phase: 'download', percent: 42, received: 420, total: 1000 });
+        }
+        await settle(700);
+        return js(`(() => {
+          const box = document.querySelector('.upd-progress');
+          const fill = box ? box.querySelector('.progress__fill') : null;
+          const pct = box ? box.querySelector('.progress__pct') : null;
+          const msg = box ? box.querySelector('.progress-label') : null;
+          const pane = document.querySelector('.settings-pane');
+          return {
+            got: window.__evtCount,
+            lastPhase: window.__evtLast ? window.__evtLast.phase : null,
+            hasBox: Boolean(box),
+            visible: box ? !box.hidden : false,
+            fillWidth: fill ? fill.style.width : '',
+            pct: pct ? pct.textContent : '',
+            msg: msg ? msg.textContent : '',
+            cat: (document.querySelector('.settings-nav__item[aria-current="page"]') || {}).innerText || '',
+            paneRootUnchanged: pane ? pane.firstElementChild === window.__khsPaneProbe : false,
+          };
+        })()`);
+      })();
+      step(
+        '更新进度条就地刷新（不重绘整页）',
+        Boolean(progressProbe && progressProbe.got >= 2 && progressProbe.visible && progressProbe.fillWidth === '42%' && /42%/.test(progressProbe.pct) && progressProbe.paneRootUnchanged),
+        progressProbe
+          ? `收到=${progressProbe.got} 末次=${progressProbe.lastPhase} 当前分类=「${progressProbe.cat}」 有进度块=${progressProbe.hasBox} 可见=${progressProbe.visible} 宽度=${progressProbe.fillWidth} 百分比=${progressProbe.pct} 说明=${progressProbe.msg} 未重绘=${progressProbe.paneRootUnchanged}`
+          : '取不到进度条'
+      );
+
+      // 静默安装：参数必须是 /S --updated，且便携版要走「手动替换」分支
+      const portableWhenSet = (() => {
+        const saved = process.env.PORTABLE_EXECUTABLE_FILE;
+        process.env.PORTABLE_EXECUTABLE_FILE = 'C:\\tmp\\KernelHub-Studio-portable.exe';
+        const yes = isPortableBuild();
+        if (saved === undefined) delete process.env.PORTABLE_EXECUTABLE_FILE;
+        else process.env.PORTABLE_EXECUTABLE_FILE = saved;
+        return yes;
+      })();
+      step(
+        '更新改用静默安装（不弹向导、沿用首次安装目录）',
+        SILENT_INSTALL_ARGS.join(' ') === '/S --updated' && portableWhenSet === true && isPortableBuild() === false,
+        `参数=${SILENT_INSTALL_ARGS.join(' ')} 便携版识别=${portableWhenSet} 当前=安装版`
       );
 
       /* ---- 2.2.1：界面语言与中文路径 ---- */

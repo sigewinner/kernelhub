@@ -86,8 +86,8 @@ FFmpeg、PyMuPDF、Pillow、Office 文档这些大块头，在「插件」页按
 
 | 文件 | 大小 | 说明 |
 |---|---|---|
-| `KernelHub Studio-2.2.1-setup.exe` | 89.9 MB | 安装版：可选安装目录，自动建快捷方式 |
-| `KernelHub Studio-2.2.1-portable.exe` | 89.6 MB | 便携版：免安装，首次启动要自解压，稍慢十几秒 |
+| `KernelHub Studio-2.2.2-setup.exe` | 89.9 MB | 安装版：可选安装目录，自动建快捷方式 |
+| `KernelHub Studio-2.2.2-portable.exe` | 89.6 MB | 便携版：免安装，首次启动要自解压，稍慢十几秒 |
 
 ### 2. 系统要求
 

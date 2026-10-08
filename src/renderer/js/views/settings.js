@@ -46,6 +46,7 @@ export async function mount(host, ctx) {
     /* 检测更新（2.2.0）：null = 还没点过 */
     updateState: null,
     updateProgress: '',
+    updatePercent: 0,
     updateNote: '',
   };
 
@@ -483,102 +484,171 @@ export async function mount(host, ctx) {
   /**
    * 更新检测只认**同一个大版本**：当前 2.x → 只推 2.x 里最新的那个。
    * 跨大版本可能有破坏性改动，交回用户自己决定。
+   *
+   * 2.2.2：这一组**只建一次骨架**，之后所有状态变化都走 paintUpdate() 就地更新。
+   * 之前是每次状态变化都调 renderPane() 重建整块面板 —— 下载进度事件约每 120ms 一次，
+   * 整页反复重建并重播 settings-pane--enter 淡入动画，观感就是「频闪」。
    */
+  let updRefs = null;
+
   function renderUpdateGroup(info) {
-    const state = vs.updateState;
+    const labelEl = h('span', { textContent: t('检测更新') });
     const checkBtn = h('button.btn', {
       type: 'button',
       title: t('到 GitHub Release 上找工作目录大版本里最新的版本'),
       on: { click: () => checkUpdate() },
-    }, h('span', { textContent: state && state.checking ? '检测中…' : '检测更新' }));
+    }, labelEl);
 
-    const rows = [
+    const latestKey = h('div.kv__k', { textContent: t('最新版本') });
+    const latestVal = h('div.kv__v.mono.accent');
+    const assetKey = h('div.kv__k', { textContent: t('安装包') });
+    const assetVal = h('div.kv__v.mono');
+    const kv = h('div.kv', null,
       h('div.kv__k', { textContent: t('当前版本') }),
       h('div.kv__v.mono', { textContent: orDash(info.version) }),
-    ];
+      latestKey, latestVal,
+      assetKey, assetVal
+    );
 
-    let status = null;
+    const statusText = h('span');
+    const statusStrip = h('div.strip', null, statusText);
+
+    // 进度条：复用全局 .progress（本来就带缓进缓出），配百分比与说明文字
+    const progressFill = h('div.progress__fill');
+    const progressTrack = h('div.progress.progress--install', null, progressFill);
+    const progressPct = h('span.progress__pct');
+    const progressMsg = h('span.progress-label');
+    const progressWrap = h('div.upd-progress', null,
+      h('div.progress-row', null, progressTrack, progressPct),
+      progressMsg
+    );
+
+    const downBtn = h('button.btn.btn--primary', {
+      type: 'button',
+      title: t('下载后静默安装到第一次安装时选定的目录'),
+      on: { click: () => downloadUpdate() },
+    }, h('span', { textContent: t('下载并静默安装') }));
+
+    const notesBtn = h('button.btn', {
+      type: 'button',
+      title: t('在浏览器里打开 Release 页面'),
+      on: {
+        click: () => {
+          const url = vs.updateState && vs.updateState.url;
+          if (url) window.khs.update.openRelease(url);
+        },
+      },
+    }, h('span', { textContent: t('查看更新说明') }));
+
+    const actionsRow = h('div.row.gap-2', null, checkBtn, downBtn, notesBtn);
+    const noteEl = h('div.field__hint');
+
+    updRefs = {
+      labelEl, checkBtn, latestKey, latestVal, assetKey, assetVal,
+      statusStrip, statusText, progressWrap, progressTrack, progressFill, progressPct, progressMsg,
+      downBtn, notesBtn, noteEl,
+    };
+    paintUpdate();
+    paneEl.appendChild(group(t('更新'), kv, statusStrip, progressWrap, actionsRow, noteEl));
+  }
+
+  /**
+   * 就地刷新更新分组。**不要**在这里调 renderPane()：
+   * 那会清空重建整块设置面板，进度条每帧都在重建 → 频闪（2.2.2 修的就是这个）。
+   */
+  function paintUpdate() {
+    const r = updRefs;
+    if (!r) return;
+    const state = vs.updateState;
+    const hasUpdate = Boolean(state && state.ok && state.hasUpdate);
+    const checking = Boolean(state && state.checking);
+
+    r.labelEl.textContent = checking ? t('检测中…') : t('检测更新');
+    r.checkBtn.disabled = checking;
+
+    // 「最新版本 / 安装包」两行只在发现更新时出现
+    r.latestKey.hidden = !hasUpdate;
+    r.latestVal.hidden = !hasUpdate;
+    r.assetKey.hidden = !(hasUpdate && state.asset);
+    r.assetVal.hidden = !(hasUpdate && state.asset);
+    if (hasUpdate) r.latestVal.textContent = String(state.latest || '');
+    if (hasUpdate && state.asset) {
+      r.assetVal.textContent = `${state.asset.name}　${humanBytes(state.asset.size)}`;
+    }
+
     if (!state) {
-      status = h('div.field__hint', { textContent: t('点「检测更新」到 GitHub 上查看同大版本是否有新版本。') });
-    } else if (state.checking) {
-      status = h('div.field__hint', { textContent: t('正在查询 GitHub Release…') });
+      r.statusStrip.className = 'strip';
+      r.statusText.textContent = t('点「检测更新」到 GitHub 上查看同大版本是否有新版本。');
+    } else if (checking) {
+      r.statusStrip.className = 'strip';
+      r.statusText.textContent = t('正在查询 GitHub Release…');
     } else if (!state.ok) {
-      status = h('div.strip.strip--warn', null, h('span', { textContent: `检测失败：${state.error}` }));
+      r.statusStrip.className = 'strip strip--warn';
+      r.statusText.textContent = t('检测失败：{error}', { error: state.error });
     } else if (!state.hasUpdate) {
-      status = h('div.strip.strip--ok', null,
-        h('span', { textContent: `已是最新（${state.major}.x 里最新为 ${state.latest}）` })
+      r.statusStrip.className = 'strip strip--ok';
+      r.statusText.textContent = t('已是最新（{major}.x 里最新为 {latest}）', {
+        major: state.major,
+        latest: state.latest,
+      });
+    } else {
+      r.statusStrip.className = 'strip strip--warn';
+      r.statusText.textContent = t(
+        '发现新版本 {latest}（{major}.x 系列）。更新会关闭本窗口并静默安装到第一次安装时选定的目录，完成后重新打开即可；已安装的插件与设置不会丢。',
+        { latest: state.latest, major: state.major }
       );
     }
 
-    const actions = [checkBtn];
+    r.downBtn.hidden = !hasUpdate;
+    r.notesBtn.hidden = !(hasUpdate && state.url);
 
-    if (state && state.ok && state.hasUpdate) {
-      rows.push(h('div.kv__k', { textContent: t('最新版本') }), h('div.kv__v.mono.accent', { textContent: state.latest }));
-      if (state.asset) {
-        rows.push(
-          h('div.kv__k', { textContent: t('安装包') }),
-          h('div.kv__v.mono', { textContent: `${state.asset.name}　${humanBytes(state.asset.size)}` })
-        );
-      }
-      const downBtn = h('button.btn.btn--primary', {
-        type: 'button',
-        title: t('下载安装包并启动安装向导'),
-        on: { click: () => downloadUpdate() },
-      }, h('span', { textContent: t('下载并启动安装') }));
-      actions.push(downBtn);
-
-      if (state.url) {
-        actions.push(h('button.btn', {
-          type: 'button',
-          title: t('在浏览器里打开 Release 页面'),
-          on: { click: () => window.khs.update.openRelease(state.url) },
-        }, h('span', { textContent: t('查看更新说明') })));
-      }
-
-      status = h('div.strip.strip--warn', null,
-        h('span', {
-          textContent: `发现新版本 ${state.latest}（${state.major}.x 系列）。更新会下载安装包并启动安装向导，按向导完成即可；已安装的插件与设置不会丢。`,
-        })
-      );
-    }
-
+    // 进度：有文案就显示这一块；百分比未知时用呼吸态
+    const pct = Number(vs.updatePercent);
+    r.progressWrap.hidden = !vs.updateProgress;
     if (vs.updateProgress) {
-      actions.push(h('span.mono.dim', { textContent: vs.updateProgress }));
+      r.progressMsg.textContent = vs.updateProgress;
+      if (Number.isFinite(pct) && pct > 0) {
+        r.progressTrack.classList.remove('progress--indeterminate');
+        r.progressFill.style.width = `${Math.max(2, Math.min(100, pct))}%`;
+        r.progressPct.textContent = `${Math.round(pct)}%`;
+      } else {
+        r.progressTrack.classList.add('progress--indeterminate');
+        r.progressPct.textContent = '';
+      }
     }
 
-    paneEl.appendChild(group(t('更新'),
-      h('div.kv', null, ...rows),
-      status,
-      h('div.row.gap-2', null, ...actions),
-      vs.updateNote ? h('div.field__hint', { textContent: vs.updateNote }) : null
-    ));
+    r.noteEl.textContent = vs.updateNote || '';
+    r.noteEl.hidden = !vs.updateNote;
   }
 
   async function checkUpdate() {
     // 浏览器开发宿主没有 update 桥：优雅降级，别把整个设置页弄崩
     if (!window.khs || !window.khs.update || typeof window.khs.update.check !== 'function') {
       vs.updateState = { ok: false, error: '当前运行方式（浏览器宿主）不支持检测更新' };
-      renderPane();
+      paintUpdate();
       return;
     }
     vs.updateState = { checking: true };
     vs.updateNote = '';
-    renderPane();
+    vs.updateProgress = '';
+    vs.updatePercent = 0;
+    paintUpdate();
     try {
       const res = await window.khs.update.check();
       vs.updateState = res || { ok: false, error: '空响应' };
     } catch (err) {
       vs.updateState = { ok: false, error: String(err && err.message ? err.message : err) };
     }
-    renderPane();
+    paintUpdate();
   }
 
   async function downloadUpdate() {
     const state = vs.updateState;
     if (!state || !state.asset) return;
-    vs.updateProgress = '准备下载…';
+    vs.updateProgress = t('准备下载…');
+    vs.updatePercent = 0;
     vs.updateNote = '';
-    renderPane();
+    paintUpdate();
     try {
       const res = await window.khs.update.download({
         url: state.asset.url,
@@ -588,19 +658,33 @@ export async function mount(host, ctx) {
       });
       if (!res || !res.ok) {
         vs.updateProgress = '';
-        vs.updateNote = `下载失败：${(res && res.error) || '未知错误'}`;
+        vs.updateNote = t('下载失败：{error}', { error: (res && res.error) || '未知错误' });
       } else if (res.launchError) {
         vs.updateProgress = '';
-        vs.updateNote = `已下载到 ${res.path}，但启动安装程序失败：${res.launchError}`;
+        vs.updateNote = t('已下载到 {path}，但启动安装程序失败：{error}', {
+          path: res.path,
+          error: res.launchError,
+        });
+      } else if (res.needsManual) {
+        // 便携版：没有「首次安装目录」可用，只能打开所在目录由用户自行替换
+        vs.updateProgress = '';
+        vs.updatePercent = 100;
+        vs.updateNote = t('便携版不会自动替换正在运行的程序：已在资源管理器中打开 {path}，用新版本覆盖即可。', {
+          path: res.path,
+        });
       } else {
         vs.updateProgress = '';
-        vs.updateNote = `安装包已下载（${humanBytes(res.bytes)}）并已启动安装向导。`;
+        vs.updatePercent = 100;
+        vs.updateNote = t(
+          '安装包已下载（{size}）并已静默启动：会按第一次安装时的设置在后台完成更新，本窗口稍后会自动关闭。',
+          { size: humanBytes(res.bytes) }
+        );
       }
     } catch (err) {
       vs.updateProgress = '';
-      vs.updateNote = `下载异常：${String(err && err.message ? err.message : err)}`;
+      vs.updateNote = t('下载异常：{error}', { error: String(err && err.message ? err.message : err) });
     }
-    renderPane();
+    paintUpdate();
   }
 
   /* ------------------------------------------------------------ 关于 */
@@ -732,22 +816,31 @@ export async function mount(host, ctx) {
     renderPane();
   }));
 
-  // 更新包下载进度（2.2.0）：只在「关于」页且正在下载时更新那一行文字
+  // 更新包下载进度（2.2.0，2.2.2 改为就地刷新）
+  // 注意：**不要**在这里调 renderPane()。进度事件约每 120ms 一次，整页重建会重播
+  // 淡入动画，观感就是频闪；paintUpdate() 只改那几个节点。
   disposers.push(window.khs.on('evt:update:progress', (payload) => {
     if (!payload) return;
     if (payload.phase === 'download') {
-      vs.updateProgress = `下载中 ${payload.percent || 0}%（${humanBytes(payload.received)} / ${humanBytes(payload.total)}）`;
+      vs.updatePercent = Number(payload.percent) || 0;
+      vs.updateProgress = t('下载中 {percent}%（{got} / {total}）', {
+        percent: payload.percent || 0,
+        got: humanBytes(payload.received),
+        total: humanBytes(payload.total),
+      });
     } else if (payload.phase === 'start') {
-      vs.updateProgress = '开始下载…';
+      vs.updatePercent = 0;
+      vs.updateProgress = t('开始下载…');
     } else if (payload.phase === 'done') {
-      vs.updateProgress = '下载完成，正在启动安装向导…';
+      vs.updatePercent = 100;
+      vs.updateProgress = t('下载完成，正在静默安装…');
     } else if (payload.phase === 'error') {
       vs.updateProgress = '';
-      vs.updateNote = String(payload.message || '下载失败');
+      vs.updateNote = String(payload.message || t('下载失败'));
     } else {
       return;
     }
-    if (vs.cat === 'about') renderPane();
+    if (vs.cat === 'about') paintUpdate();
   }));
 
   renderNav();

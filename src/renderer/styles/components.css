@@ -574,6 +574,27 @@
   color: var(--c-ink-2);
 }
 
+/**
+ * 更新进度区（2.2.2）：进度条 + 说明文字竖排。
+ * 独立成块是因为它整段出现/消失，不会推动上面的行；进度条本身复用 .progress
+ * （已带缓进缓出过渡），百分比用等宽数字避免宽度跳动。
+ */
+.upd-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+}
+
+.upd-progress .progress-row {
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+.upd-progress .progress-label {
+  color: var(--c-ink-3);
+}
+
 /* ------------------------------------------------------------------ 统计 */
 
 .stats {
