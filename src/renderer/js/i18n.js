@@ -551,6 +551,18 @@ const EN = {
   '可直接粘贴到终端执行': 'Paste it into a terminal to run',
   '依赖装好了，可以在转换页使用了': 'Dependencies are ready — usable on the Convert page.',
   '手动安装': 'Manual install',
+  // 2.3.2：外部程序（pip 装不了的那些）
+  '需要外部程序：{0}（pip 装不了）': 'Requires an external program: {0} (cannot be installed with pip)',
+  '选择可执行文件…': 'Choose executable…',
+  '打开下载页': 'Open download page',
+  '需要外部程序': 'External program required',
+  '不需要外部程序的替代内核': 'Alternatives that need no external program',
+  '安装 {0}（含依赖）': 'Install {0} (with dependencies)',
+  '使用它（已安装）': 'Use it (already installed)',
+  '正在安装插件…': 'Installing plugin…',
+  '已指定 {0}': 'Set {0}',
+  '设置可执行文件失败': 'Failed to set the executable',
+  '回「转换」页即可用它，不再需要外部程序': 'Switch to Convert to use it — no external program needed',
   '卸载插件「{0}」？': 'Uninstall plugin “{0}”?',
   '卸载': 'Uninstall',
   '会删除 {0} 目录（{1}）。\n对应的内核会立刻从转换页消失。':

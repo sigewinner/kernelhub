@@ -223,6 +223,8 @@ class Hub {
     const outcome = await runJob(entry, job, {
       hubRoot: this.hubRoot,
       sysPath: this.registry.sysPath,
+      /** 2.3.2：界面上指定过的外部程序路径（设置 → exePaths） */
+      exePaths: this.registry.exePaths,
       timeoutMs: req.timeoutMs || this.settings.get('timeoutMs', DEFAULT_TIMEOUT_MS),
       onEvent: hooks.onEvent,
       onLog: hooks.onLog,

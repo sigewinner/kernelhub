@@ -117,7 +117,7 @@ function pickTemplate(templates, srcFmt, dstFmt, op) {
  * @returns {{argv: string[], template: object, outputMode: string, outputGlob: string}}
  */
 function buildPlan(entry, job, ctx) {
-  const { hubRoot = '', sysPath = [] } = ctx || {};
+  const { hubRoot = '', sysPath = [], exePaths = {} } = ctx || {};
   const xCli = entry.manifest.xCli || {};
   const templates = xCli.templates || [];
   const params = job.params || {};
@@ -148,6 +148,7 @@ function buildPlan(entry, job, ctx) {
         hubRoot,
         sysPath,
         pluginDir: entry.directory,
+        exePaths,
       }).path;
     }
   }

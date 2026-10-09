@@ -12,6 +12,12 @@ const DEFAULTS = {
   hubRoot: '',
   extraPluginDirs: [],
   extraPythonPaths: [],
+  /**
+   * 外部可执行文件的显式路径（2.3.2）：{ gswin64c: 'D:\\gs\\bin\\gswin64c.exe' }。
+   * 界面上「选择可执行文件…」写这里；引擎解析时优先用它 ——
+   * 有些工具（Ghostscript 等）装完不在 PATH 里，这是最直接的解法。
+   */
+  exePaths: {},
   disabledKernels: [],
   priorityOverrides: {},
   lastOutputDir: '',

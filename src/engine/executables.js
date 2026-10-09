@@ -4,12 +4,13 @@
  *
  * 与 kernel-hub/kernelhub/executables.py 行为一致，保证
  * 「ckp-executable 探测通过」== 「{exe:名字} 真的能展开成可执行路径」。
- * 解析顺序：env(CKP_EXE_*) → python(模块:函数) → bundled(项目内 glob)
- *          → absolute(绝对路径) → path(系统 PATH)
+ * 解析顺序：settings(应用内指定的路径) → env(CKP_EXE_*) → python(模块:函数)
+ *          → bundled(项目内 glob) → absolute(绝对路径) → path(系统 PATH)
  */
 
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
 const { CkpError } = require('../shared/protocol');
 const { globSync } = require('./paths');
@@ -30,16 +31,103 @@ function isFile(p) {
 }
 
 /**
+ * 常见安装位置 —— 有些工具装完**不会**把自己加进 PATH。
+ *
+ * 实测：Ghostscript 的 Windows 安装包默认把程序放到
+ * `C:\Program Files\gs\gs10.xx.x\bin\gswin64c.exe`，PATH 里什么都没有；
+ * 环境变量也只在勾选「Add to PATH」时才设置。于是「明明装了却报找不到」
+ * 就成了最常见的求助。这里补上注册表与几个常见目录的探测。
+ */
+function findInKnownLocations(candidates) {
+  const progFiles = process.env.ProgramFiles || 'C:\\Program Files';
+  const progFiles86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+  const localApp = process.env.LOCALAPPDATA || '';
+
+  const names = candidates.map((c) => String(c).trim()).filter(Boolean);
+  const bare = names.map((n) => n.replace(/\.exe$/i, ''));
+  const isGs = bare.some((n) => /^(gswin64c|gswin32c|gs)$/i.test(n));
+
+  /** 只列一层子目录（globSync 只在 basename 里支持通配符，中间目录的 * 它不管） */
+  const subdirs = (dir) => {
+    try {
+      return fs
+        .readdirSync(dir, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => path.join(dir, d.name))
+        .sort()
+        .reverse(); // 版本目录名倒序 → 先用新版本
+    } catch {
+      return [];
+    }
+  };
+
+  if (isGs) {
+    const gsNames = bare.filter((x) => /^(gswin64c|gswin32c|gs)$/i.test(x));
+    const roots = [path.join(progFiles, 'gs'), path.join(progFiles86, 'gs')];
+    if (localApp) roots.push(path.join(localApp, 'Programs', 'gs'));
+
+    for (const root of roots) {
+      // 1) <root>\<版本>\bin\<名字>.exe（安装包默认布局）
+      for (const ver of subdirs(root)) {
+        for (const n of gsNames) {
+          for (const cand of [path.join(ver, 'bin', `${n}.exe`), path.join(ver, `${n}.exe`)]) {
+            if (isFile(cand)) return { path: cand, source: `常见安装目录 ${cand}` };
+          }
+        }
+      }
+      // 2) <root>\<名字>.exe（手工解压/绿色版常见）
+      for (const n of gsNames) {
+        const cand = path.join(root, `${n}.exe`);
+        if (isFile(cand)) return { path: cand, source: `常见安装目录 ${cand}` };
+      }
+    }
+
+    // 3) 注册表：GS_DLL 指向 bin 目录里的 DLL，同目录就有 gswin64c.exe
+    for (const regRoot of ['HKLM\\SOFTWARE\\GPL Ghostscript', 'HKLM\\SOFTWARE\\WOW6432Node\\GPL Ghostscript']) {
+      try {
+        const res = spawnSync('reg.exe', ['query', regRoot, '/s'], { windowsHide: true, encoding: 'utf8', timeout: 10000 });
+        const text = String((res && res.stdout) || '');
+        const m = text.match(/GS_DLL\s+REG_SZ\s+(.+)/i);
+        if (!m) continue;
+        const dir = path.dirname(m[1].trim());
+        for (const n of gsNames) {
+          const cand = path.join(dir, `${n}.exe`);
+          if (isFile(cand)) return { path: cand, source: `注册表 ${regRoot}` };
+        }
+      } catch {
+        /* 注册表读不到就跳过 */
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * @returns {{path: string, source: string, attempts: string[]}}
  * @throws {CkpError} DEPENDENCY_MISSING
  */
 function resolveExecutable(name, spec, ctx = {}) {
-  const { hubRoot = '', sysPath = [], pluginDir = '' } = ctx;
+  const { hubRoot = '', sysPath = [], pluginDir = '', exePaths = {} } = ctx;
   const attempts = [];
 
+  /*
+   * 0) 应用内指定的路径（设置 → exePaths）。
+   * 用户在界面上「选择可执行文件…」选过一次之后就永远优先用它 ——
+   * 这是对「明明装了却找不到」最直接的解法，也方便绿色版/自定义安装位置。
+   */
+  const chosen = String((exePaths && exePaths[name]) || '').trim();
+  if (chosen) {
+    if (isFile(chosen)) return { path: chosen, source: `设置中指定 ${chosen}`, attempts };
+    attempts.push(`设置中指定的路径不存在：${chosen}`);
+  }
+
   if (!spec) {
-    const found = findOnPath([name]);
-    if (found) return { path: found, source: `PATH: ${found}`, attempts };
+    const found = findOnPath([name]) || findInKnownLocations([name]);
+    if (found) {
+      const p = typeof found === 'string' ? found : found.path;
+      const src = typeof found === 'string' ? `PATH: ${p}` : found.source;
+      return { path: p, source: src, attempts };
+    }
     if (path.isAbsolute(name) && isFile(name)) {
       return { path: name, source: `绝对路径: ${name}`, attempts };
     }
@@ -121,7 +209,10 @@ function resolveExecutable(name, spec, ctx = {}) {
       const candidates = (specObj.candidates || [name]).map(String);
       const found = findOnPath(candidates);
       if (found) return { path: found, source: `PATH: ${found}`, attempts };
-      attempts.push(`PATH 中未找到 ${candidates.join('、')}`);
+      // PATH 里没有就翻常见安装位置（装上但没加进 PATH 是最常见的情形）
+      const known = findInKnownLocations(candidates);
+      if (known) return { path: known.path, source: known.source, attempts };
+      attempts.push(`PATH 与常见安装目录中均未找到 ${candidates.join('、')}`);
     }
   }
 
@@ -144,4 +235,4 @@ function describeSpec(spec, name = 'NAME') {
   return (parts.join('；') || '未配置') + `（可用 ${envVarFor(name)} 覆盖）`;
 }
 
-module.exports = { resolveExecutable, describeSpec, envVarFor, DEFAULT_PREFER };
+module.exports = { resolveExecutable, describeSpec, envVarFor, DEFAULT_PREFER, findInKnownLocations };

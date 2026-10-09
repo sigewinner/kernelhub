@@ -76,7 +76,7 @@ function readManifestFile(file) {
 /* ------------------------------------------------------------------ 探测器 */
 
 function probeEntry(entry, ctx) {
-  const { hubRoot, sysPath, python } = ctx;
+  const { hubRoot, sysPath, python, exePaths } = ctx;
   const manifest = entry.manifest;
   const probe = manifest.probe;
   const ptype = probe.type || 'none';
@@ -138,6 +138,7 @@ function probeEntry(entry, ctx) {
         hubRoot,
         sysPath,
         pluginDir: entry.directory,
+        exePaths,
       });
       return { ...entryStatus(), note: `${path.basename(p)} ← ${source}` };
     } catch (err) {
@@ -294,6 +295,11 @@ class Registry {
     this.sdkDir = opts.sdkDir === undefined ? resolveSdkDir() : opts.sdkDir;
     /** 额外的 PYTHONPATH 条目（例如用户自建的共享依赖目录） */
     this.extraPythonPaths = (opts.extraPythonPaths || []).map((p) => path.resolve(p));
+    /**
+     * 外部可执行文件的显式路径（2.3.2）：{ gswin64c: '...' }。
+     * 界面上「选择可执行文件…」写进设置，探测与执行都优先用它。
+     */
+    this.exePaths = { ...(opts.exePaths || {}) };
     this.entries = new Map();
     this.errors = [];
     this.scannedAt = 0;
@@ -472,7 +478,7 @@ class Registry {
     const cacheKey = `${manifest.id}|${mtime}`;
     let probed = this.probeCache.get(cacheKey);
     if (!probed) {
-      probed = probeEntry(entry, { hubRoot: this.hubRoot, sysPath: this.sysPath, python: this.python });
+      probed = probeEntry(entry, { hubRoot: this.hubRoot, sysPath: this.sysPath, python: this.python, exePaths: this.exePaths });
       this.probeCache.set(cacheKey, probed);
     }
     entry.status = probed.status;

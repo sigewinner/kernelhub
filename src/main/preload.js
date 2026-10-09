@@ -101,6 +101,10 @@ const api = {
     ops: () => invoke('kernels:ops'),
     formats: () => invoke('kernels:formats'),
     openDir: (id) => invoke('kernels:openDir', id),
+    /** 2.3.2：外部程序 —— 指定/清除可执行文件路径、查无需外部程序的替代插件 */
+    pickExe: (payload) => invoke('kernels:pickExe', payload),
+    clearExe: (name) => invoke('kernels:clearExe', { name }),
+    alternatives: (payload) => invoke('kernels:alternatives', payload),
   },
 
   /* -- 插件商店 ----------------------------------------------------------- */

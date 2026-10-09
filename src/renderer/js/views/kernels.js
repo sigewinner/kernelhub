@@ -493,6 +493,7 @@ export async function mount(host, ctx) {
       ]),
       executableHint(kernel, executables),
       depsFix(kernel),
+      externalFix(kernel),
       kernel.installHint
         ? h('div', null,
           h('div.codeblock.codeblock--wrap', null,
@@ -590,7 +591,132 @@ export async function mount(host, ctx) {
     return strip;
   }
 
-  /* --------------------------------------------------------------- 事件 */
+  /* ------------------------------------------------- 外部程序（2.3.2） */
+
+  /** 这些工具 pip 装不了，只能去官网下；给个直达链接省得用户自己搜 */
+  const EXE_HOME = {
+    gs: 'https://www.ghostscript.com/releases/gsdnld.html',
+    gswin64c: 'https://www.ghostscript.com/releases/gsdnld.html',
+    gswin32c: 'https://www.ghostscript.com/releases/gsdnld.html',
+    magick: 'https://imagemagick.org/script/download.php#windows',
+    convert: 'https://imagemagick.org/script/download.php#windows',
+    ffmpeg: 'https://ffmpeg.org/download.html',
+    soffice: 'https://www.libreoffice.org/download/download-libreoffice/',
+    pandoc: 'https://pandoc.org/installing.html',
+  };
+
+  /**
+   * 内核起不来是因为缺**外部程序**时，给三件事：
+   *   1. 选择可执行文件…（写进设置，探测与执行都优先用它）
+   *   2. 打开下载页（pip 装不了，只能去官网）
+   *   3. 不需要外部程序的替代内核（一键安装，含依赖）
+   *
+   * 第 3 条是实测出来的最省事路径：ghostscript-pdf 要求系统装 Ghostscript
+   * （不在 PATH 里、可能还要管理员权限），而 pymupdf-pdf 只要 pip 一个包 ——
+   * 而 pip 依赖我们本来就能一键装。
+   */
+  function externalFix(kernel) {
+    const spec = kernel.executables && typeof kernel.executables === 'object' ? kernel.executables : null;
+    if (!spec) return null;
+    const names = Object.keys(spec).filter(Boolean);
+    if (!names.length || kernel.status === 'ready') return null;
+
+    const first = names[0];
+    const pick = h('button.btn.btn--sm', { type: 'button' }, h('span', { textContent: t('选择可执行文件…') }));
+    const home = EXE_HOME[String(first).toLowerCase()] || '';
+    const openHome = home
+      ? h('button.btn.btn--sm', {
+        type: 'button',
+        on: { click: () => window.khs.fs.openExternal(home) },
+      }, h('span', { textContent: t('打开下载页') }))
+      : null;
+
+    const altHost = h('div', { style: { marginTop: '10px' } });
+    const box = h('div.strip.strip--warn', null,
+      h('span', { textContent: t('需要外部程序：{0}（pip 装不了）', { 0: names.join('、') }) }),
+      pick,
+      openHome
+    );
+    box.appendChild(altHost);
+
+    pick.addEventListener('click', async () => {
+      pick.disabled = true;
+      try {
+        const res = await window.khs.kernels.pickExe({ name: first, id: kernel.id });
+        if (!res || res.canceled) {
+          pick.disabled = false;
+          return;
+        }
+        if (!res.ok) {
+          ctx.reportError(t('设置可执行文件失败'), ctx.wrapError(new Error(res.error || '未知错误')));
+          pick.disabled = false;
+          return;
+        }
+        ctx.toast.success(t('已指定 {0}', { 0: first }), { text: res.path });
+        await ctx.refreshKernels({ announce: false });
+        openDetail(kernel.id);
+      } catch (err) {
+        ctx.reportError(t('设置可执行文件失败'), ctx.wrapError(err));
+        pick.disabled = false;
+      }
+    });
+
+    // 替代内核：目录里同样能干这件事、但不需要外部程序的插件
+    (async () => {
+      let data = null;
+      try {
+        data = await window.khs.kernels.alternatives({ id: kernel.id, limit: 3 });
+      } catch {
+        return;
+      }
+      const list = (data && data.alternatives) || [];
+      if (!list.length) return;
+      altHost.appendChild(h('div.param-section__title', null, h('span', { textContent: t('不需要外部程序的替代内核') })));
+      for (const alt of list) {
+        const label = h('span', {
+          textContent: alt.installed
+            ? t('使用它（已安装）')
+            : t('安装 {0}（含依赖）', { 0: alt.displayName || alt.id }),
+        });
+        const btn = h('button.btn.btn--sm', { type: 'button' }, label);
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          const setLabel = (text) => {
+            label.textContent = text;
+          };
+          try {
+            if (!alt.installed) {
+              setLabel(t('正在安装插件…'));
+              const res = await window.khs.plugins.install(alt.id);
+              if (!res || !res.ok) throw new Error((res && res.error) || '插件安装失败');
+            }
+            // 依赖：缺什么装什么（镜像不通会自动回退官方源）
+            setLabel(t('正在安装依赖…'));
+            const probe = await window.khs.plugins.deps(alt.id);
+            if (probe && probe.ok && (probe.missing || []).length) {
+              const dep = await window.khs.plugins.installDeps({ id: alt.id });
+              if (!dep || !dep.ok) throw new Error((dep && dep.error) || '依赖安装失败');
+            }
+            ctx.toast.success(t('{0} 已就绪', { 0: alt.displayName || alt.id }), {
+              text: t('回「转换」页即可用它，不再需要外部程序'),
+            });
+            await ctx.refreshKernels({ announce: false });
+            openDetail(kernel.id);
+          } catch (err) {
+            ctx.reportError(t('安装失败'), ctx.wrapError(err));
+            setLabel(t('重试'));
+            btn.disabled = false;
+          }
+        });
+        altHost.appendChild(h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px' } },
+          h('span', { textContent: `${alt.displayName || alt.id}（${(alt.ops || []).join(' / ')}）` }),
+          btn
+        ));
+      }
+    })();
+
+    return box;
+  }
 
   disposers.push(on(searchInput, 'input', () => {
     vs.query = searchInput.value;

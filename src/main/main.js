@@ -84,6 +84,8 @@ function registryOptions(hubRoot) {
     extraPluginDirs: settings.get('extraPluginDirs', []),
     disabledKernels: settings.get('disabledKernels', []),
     priorityOverrides: settings.get('priorityOverrides', {}),
+    /** 2.3.2：界面上「选择可执行文件…」选过的路径，探测与执行都优先用它 */
+    exePaths: settings.get('exePaths', {}),
   };
 }
 
@@ -773,8 +775,7 @@ function registerIpc() {
     return settlePluginChange({ ...result, id: pid }, pid);
   });
 
-  handle('plugins:openDir', () => {
-    const dir = pluginStore.pluginsDir;
+  handle('plugins:openDir', () => {    const dir = pluginStore.pluginsDir;
     try {
       fs.mkdirSync(dir, { recursive: true });
     } catch {
@@ -803,6 +804,105 @@ function registerIpc() {
     /** 自动补装依赖时优先用的 pip 源（2.1.0） */
     pipIndexUrl: settings.get('pipIndexUrl', ''),
   }));
+
+  /* -- 外部程序（2.3.2）---------------------------------------------------- */
+
+  /**
+   * 让用户直接指定外部可执行文件。
+   *
+   * 背景：Ghostscript 这类工具装完**不在 PATH 里**（环境变量也只在勾选时才设），
+   * 用户看到的只有一句「找不到可执行文件 'gs'」，以前只能自己去配环境变量或
+   * 翻安装目录。现在在界面上选一次，路径写进设置（exePaths），
+   * 探测与执行都优先用它。
+   */
+  handle('kernels:pickExe', async ({ name, id } = {}) => {
+    const exeName = String(name || '').trim();
+    if (!exeName) return { ok: false, error: '缺少可执行文件名' };
+    let picked = '';
+    try {
+      const res = await dialog.showOpenDialog(mainWindow, {
+        title: `选择 ${exeName} 的可执行文件`,
+        properties: ['openFile'],
+        filters: [
+          { name: '可执行文件', extensions: ['exe', 'cmd', 'bat', 'ps1'] },
+          { name: '所有文件', extensions: ['*'] },
+        ],
+      });
+      if (res.canceled || !res.filePaths || !res.filePaths.length) return { ok: false, canceled: true };
+      picked = res.filePaths[0];
+    } catch (err) {
+      return { ok: false, error: String((err && err.message) || err) };
+    }
+    const current = { ...(settings.get('exePaths', {}) || {}) };
+    current[exeName] = picked;
+    settings.set('exePaths', current);
+    registry.exePaths = { ...current };
+    clearProbeCache();
+    const kernels = (reloadRegistry(), registry.allEntries().map(catalog.kernelView));
+    const entry = id ? registry.get(String(id)) : null;
+    return {
+      ok: true,
+      name: exeName,
+      path: picked,
+      kernels,
+      kernel: entry ? catalog.kernelDetail(entry) : null,
+    };
+  });
+
+  /** 清掉指定路径，退回自动探测（选错了能反悔） */
+  handle('kernels:clearExe', ({ name } = {}) => {
+    const exeName = String(name || '').trim();
+    const current = { ...(settings.get('exePaths', {}) || {}) };
+    delete current[exeName];
+    settings.set('exePaths', current);
+    registry.exePaths = { ...current };
+    clearProbeCache();
+    return {
+      ok: true,
+      name: exeName,
+      kernels: (reloadRegistry(), registry.allEntries().map(catalog.kernelView)),
+    };
+  });
+
+  /**
+   * 这个内核起不来（缺外部程序）时，目录里有没有「同样能干这件事、
+   * 但不需要外部程序」的插件？有就给用户一条更省事的路。
+   *
+   * 实测场景：ghostscript-pdf 要求系统装 Ghostscript（还要管理员权限、
+   * 装完还不在 PATH 里），而 pymupdf-pdf 只要 pip 装一个包 ——
+   * 而 pip 依赖我们本来就能一键安装，对用户来说容易得多。
+   */
+  handle('kernels:alternatives', ({ id, limit } = {}) => {
+    const pid = String(id || '');
+    const cat = pluginStore.cachedCatalog();
+    if (!cat) return { ok: true, alternatives: [] };
+    const rows = cat.plugins || [];
+    const mine = rows.find((r) => r.id === pid);
+    const myOps = new Set((mine && mine.ops) || []);
+    if (!myOps.size) return { ok: true, alternatives: [] };
+
+    const installed = new Set(registry.allEntries().map((e) => e.id));
+    const nameMap = applyDisplayNames();
+    const scored = [];
+    for (const row of rows) {
+      if (row.id === pid) continue;
+      // 只推荐不需要外部程序的 —— 外部程序正是用户卡住的原因
+      if ((row.external || []).length) continue;
+      const shared = (row.ops || []).filter((op) => myOps.has(op));
+      if (shared.length < 2) continue;
+      scored.push({
+        id: row.id,
+        name: row.name || row.id,
+        displayName: nameMap.get(row.id) || row.name || row.id,
+        ops: shared,
+        requires: row.requires || [],
+        size: Number(row.size) || 0,
+        installed: installed.has(row.id),
+      });
+    }
+    scored.sort((a, b) => b.ops.length - a.ops.length || a.size - b.size);
+    return { ok: true, alternatives: scored.slice(0, Math.max(1, Number(limit) || 3)) };
+  });
 
   /* -- 计划 / 参数 --------------------------------------------------------- */
 
@@ -1347,6 +1447,30 @@ async function runSelfTest() {
         '依赖齐全时不重复安装（自动补装接口返回 alreadyOk）',
         Boolean(depsNoop && depsNoop.ok && depsNoop.alreadyOk === true),
         depsNoop ? `ok=${depsNoop.ok} alreadyOk=${depsNoop.alreadyOk}` : '取不到返回值'
+      );
+
+      /*
+       * 2.3.2：缺外部程序的内核，要能给出「不需要外部程序的替代内核」。
+       * ghostscript-pdf 需要系统装 Ghostscript（还要管理员权限、装完还不在 PATH），
+       * 而 pymupdf-pdf 只要 pip 一个包 —— 这条断言保证界面拿得到这个建议。
+       */
+      const alts = await js(`window.khs.kernels.alternatives({ id: 'ghostscript-pdf', limit: 3 })`);
+      const altIds = alts && Array.isArray(alts.alternatives) ? alts.alternatives.map((a) => a.id) : [];
+      step(
+        '缺外部程序的内核能给出替代方案（无需外部程序、可一键装）',
+        Boolean(alts && alts.ok) && altIds.includes('pymupdf-pdf'),
+        altIds.length ? `建议：${altIds.join(' / ')}` : '没有给出替代方案'
+      );
+
+      /*
+       * 外部程序的显式路径：设置里的 exePaths 字段必须存在（界面上「选择可执行文件…」
+       * 就写这里）。自检跑在主进程里，直接读设置即可，不必绕渲染进程。
+       */
+      const exePathsConfigured = settings.get('exePaths', null);
+      step(
+        '设置里有外部程序路径字段（exePaths）',
+        exePathsConfigured !== null && typeof exePathsConfigured === 'object',
+        `exePaths=${JSON.stringify(exePathsConfigured || {})}`
       );
 
       /* ---- 2.0.4：开启动画、侧栏指示块、右下角实时信息、页头只剩标题 ---- */

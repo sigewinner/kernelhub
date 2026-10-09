@@ -149,6 +149,7 @@ function runJob(entry, job, opts = {}) {
   const {
     hubRoot = '',
     sysPath = [],
+    exePaths = {},
     timeoutMs = DEFAULT_TIMEOUT_MS,
     onEvent,
     onLog,
@@ -180,7 +181,7 @@ function runJob(entry, job, opts = {}) {
     let plan;
     try {
       if (entry.manifest.xCli) {
-        plan = buildPlan(entry, job, { hubRoot, sysPath });
+        plan = buildPlan(entry, job, { hubRoot, sysPath, exePaths });
       } else {
         plan = { argv: [], template: null, outputMode: 'exact', outputGlob: '' };
       }
