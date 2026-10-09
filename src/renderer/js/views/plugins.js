@@ -14,11 +14,12 @@
  * 另外转换页监听内核签名变化后会重算目标格式（见 views/convert.js 的 syncFromStore）。
  */
 
-import { h, clear, on, iconAction } from '../dom.js';
+import { h, clear, on, iconAction, copyText } from '../dom.js';
 import { icon } from '../icons.js';
 import { statusBadge } from '../layout.js';
 import { createSegmented } from '../segmented.js';
 import { t, statusText } from '../i18n.js';
+import { depsFailureDetail } from '../depsReason.js';
 
 /** 插件安装状态 → 文案与色调 */
 const STATE_META = {
@@ -330,9 +331,23 @@ export async function mount(host, ctx) {
               () => installOne(p, false), !canInstall || isInstalled),
             iconButton('retry', t('重新安装 / 更新到 {0}', { 0: p.version }),
               () => installOne(p, true), !canInstall || !isInstalled),
-            // 2.1.0：装了但内核起不来（多半是缺依赖）时，给一个手动补装的入口
-            iconButton('download', t('检查并自动补装该插件的依赖（Python 模块）'),
-              () => runDepsInstall(p.id), !isInstalled),
+            /*
+             * 2.3.0：装了但内核起不来（多半是缺依赖）时，给一个**带文字**的按钮。
+             * 以前这里是个下载图标（并列在 5 个图标里、只有悬停才说明），
+             * 用户根本看不出这里是「自动补装依赖」，于是自己去终端 pip install。
+             */
+            isInstalled && k && k.status !== 'ready'
+              ? h('button.btn.btn--sm', {
+                type: 'button',
+                title: t('自动安装依赖'),
+                on: {
+                  click: (ev) => {
+                    ev.stopPropagation();
+                    runDepsInstall(p.id, null);
+                  },
+                },
+              }, h('span', { textContent: t('安装依赖') }))
+              : null,
             iconButton('trash', t('卸载 {0}', { 0: p.id }), () => uninstallOne(p), !isInstalled),
             iconButton('external', t('在资源管理器中打开该插件目录'), () => revealOne(p), !isInstalled)
           )
@@ -463,12 +478,21 @@ export async function mount(host, ctx) {
 
     const actions = [];
     if (missing.length) {
+      // 2.3.0：只留一个「自动安装依赖」——镜像不通会自动回退官方源，
+      // 不再让用户先选源（实测多数人并不关心源，只关心能不能装上）
       actions.push({
-        label: t('用镜像安装'),
+        label: t('自动安装依赖'),
         primary: true,
-        run: () => runDepsInstall(id, info.indexPreferred),
+        run: () => runDepsInstall(id, null),
       });
-      actions.push({ label: t('从官方源安装'), run: () => runDepsInstall(id, info.indexOfficial) });
+      // 想在终端自己装的，命令仍然给出来，但不再是唯一出路
+      actions.push({
+        label: t('复制手动安装命令'),
+        run: () => {
+          copyText(depsCommand(info));
+          ctx.toast.success(t('已复制安装命令'), { text: t('可直接粘贴到终端执行') });
+        },
+      });
     }
     actions.push({ label: missing.length ? '稍后手动处理' : '知道了', kind: 'ghost' });
 
@@ -480,13 +504,22 @@ export async function mount(host, ctx) {
     });
   }
 
+  /** 手抄到终端用的 pip 命令（给还想自己装的人，不再是唯一出路） */
+  function depsCommand(info) {
+    if (!info) return '';
+    const py = info.python || 'python';
+    const pkgs = (info.packages || []).join(' ');
+    const index = info.indexPreferred || 'https://pypi.org/simple';
+    return `"${py}" -m pip install --upgrade --target "${info.vendorDir}" -i ${index} ${pkgs}`;
+  }
+
   /** 真正执行补装：pip 输出会经 evt:plugin:progress 逐行回到进度条上 */
   async function runDepsInstall(id, indexUrl) {
     renderProgress({ phase: 'deps', percent: 0, message: t('正在安装 {0} 的依赖…', { 0: id }) });
     try {
       const res = await window.khs.plugins.installDeps({ id, indexUrl });
       if (!res || !res.ok) {
-        const msg = (res && res.error) || (res && res.tried ? t('已尝试 {0}', { 0: res.tried.join(' / ') }) : '未知错误');
+        const msg = depsFailureDetail(res) || '未知错误';
         renderProgress({ phase: 'error', percent: 0, message: t('依赖安装失败：{0}', { 0: msg }) });
         ctx.toast.error(t('依赖安装失败'), msg);
         return;

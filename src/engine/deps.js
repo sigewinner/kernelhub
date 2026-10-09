@@ -48,6 +48,43 @@ const FALLBACK_INDEXES = [
   { id: 'pypi', label: 'PyPI 官方源', url: 'https://pypi.org/simple' },
 ];
 
+/**
+ * 本次进程内「已知在这个源上没有可用包」的源地址。
+ *
+ * 实测：Python 3.14 上清华镜像对很多包还不返回可用版本
+ * （`No matching distribution found` / `from versions: none`），
+ * 而官方源有 cp314 轮子。记住坏源后，第二次补装直接走官方源，
+ * 不再让用户白等一次、也不再看到一句看不懂的英文报错。
+ */
+const BAD_INDEXES = new Set();
+
+/** 把 pip 的失败输出归类，界面据此给出人能看懂的解释 */
+function classifyFailure(log, error) {
+  const text = String(log || '') + '\n' + String(error || '');
+  if (/no matching distribution|from versions: none|could not find a version/i.test(text)) return 'index-missing';
+  if (/proxy|timed out|timeout|connection|unreachable|ssl|temporary failure/i.test(text)) return 'network';
+  if (/permission denied|access is denied|winerror 5|errno 13/i.test(text)) return 'permission';
+  if (/no module named pip|pip is not recognized|not recognized as an internal/i.test(text)) return 'no-pip';
+  return 'unknown';
+}
+
+/** 读解释器版本，失败原因里要带上它（用户才知道该换 Python 还是换源） */
+function pythonVersion(python) {
+  if (!python) return '';
+  try {
+    const { spawnSync } = require('child_process');
+    const res = spawnSync(python, ['-c', 'import sys;print("%d.%d.%d"%sys.version_info[:3])'], {
+      windowsHide: true,
+      encoding: 'utf8',
+      timeout: 15000,
+    });
+    const out = String((res && res.stdout) || '').trim();
+    return /^\d+\.\d+\.\d+$/.test(out) ? out : '';
+  } catch {
+    return '';
+  }
+}
+
 function packageFor(moduleName) {
   const name = String(moduleName || '').trim();
   return MODULE_PACKAGE[name] || name;
@@ -153,6 +190,10 @@ function pipInstall({ python, target, packages, indexUrl, onLine } = {}) {
 
 /**
  * 按「设置里的源 → 回退源」顺序尝试安装，首个成功即返回。
+ *
+ * 已知不可用的源（上一次返回 index-missing）会被跳过，直接走下一个 ——
+ * 这是为了 Python 3.14 这类「镜像还没有对应版本」的情况不重复白等。
+ *
  * @param {object} opts
  * @param {string} [opts.preferredIndex] 设置里的源（默认国内镜像）
  * @param {(info:{index:string, attempt:number})=>void} [opts.onIndex]
@@ -160,7 +201,9 @@ function pipInstall({ python, target, packages, indexUrl, onLine } = {}) {
 async function installMissing({ python, target, packages, preferredIndex, onLine, onIndex } = {}) {
   const pkgs = (packages || []).filter(Boolean);
   if (!pkgs.length) return { ok: true, alreadyOk: true, installed: [], log: '' };
-  if (!python) return { ok: false, error: '没有找到 Python 解释器', installed: [], log: '' };
+  if (!python) {
+    return { ok: false, error: '没有找到 Python 解释器', reason: 'no-python', installed: [], log: '' };
+  }
 
   const tried = [];
   const candidates = [];
@@ -172,6 +215,10 @@ async function installMissing({ python, target, packages, preferredIndex, onLine
   let last = null;
   for (let i = 0; i < candidates.length; i += 1) {
     const index = candidates[i];
+    if (BAD_INDEXES.has(index.url) && i < candidates.length - 1) {
+      // 这个源上次就没有可用包，跳过它省一次白等
+      continue;
+    }
     tried.push(index.url);
     if (typeof onIndex === 'function') {
       try {
@@ -181,17 +228,34 @@ async function installMissing({ python, target, packages, preferredIndex, onLine
       }
     }
     const result = await pipInstall({ python, target, packages: pkgs, indexUrl: index.url, onLine });
-    if (result.ok) return { ...result, installed: pkgs, indexUsed: index.url, tried };
+    if (result.ok) {
+      BAD_INDEXES.delete(index.url);
+      return { ...result, installed: pkgs, indexUsed: index.url, tried };
+    }
+    const reason = classifyFailure(result.log, result.error);
+    if (reason === 'index-missing' && candidates.length > 1) BAD_INDEXES.add(index.url);
     last = result;
   }
-  return { ok: false, installed: [], tried, ...(last || {}) };
+  const reason = last ? classifyFailure(last.log, last.error) : 'unknown';
+  return {
+    ok: false,
+    installed: [],
+    tried,
+    reason,
+    pythonVersion: pythonVersion(python),
+    packages: pkgs,
+    ...(last || {}),
+  };
 }
 
 module.exports = {
   MODULE_PACKAGE,
   FALLBACK_INDEXES,
+  BAD_INDEXES,
   packageFor,
   probeMissing,
   pipInstall,
   installMissing,
+  classifyFailure,
+  pythonVersion,
 };

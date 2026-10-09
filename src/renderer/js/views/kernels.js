@@ -17,6 +17,7 @@ import { createSheet } from '../sheet.js';
 import { statusBadge, kernelStateTone } from '../layout.js';
 import { thousands, prettyJson, orDash, joinLimited } from '../format.js';
 import { t, statusText, kindText, opText } from '../i18n.js';
+import { depsFailureDetail } from '../depsReason.js';
 
 export async function mount(host, ctx) {
   const { store } = ctx;
@@ -491,6 +492,7 @@ export async function mount(host, ctx) {
         ['探测方式', kernel.probe ? `${orDash(kernel.probe.type)} → ${orDash(kernel.probe.target)}` : '—'],
       ]),
       executableHint(kernel, executables),
+      depsFix(kernel),
       kernel.installHint
         ? h('div', null,
           h('div.codeblock.codeblock--wrap', null,
@@ -529,8 +531,63 @@ export async function mount(host, ctx) {
     if (!executables.length) return null;
     if (kernel.status === 'ready') return null;
     return h('div.strip.strip--warn', null,
-      h('span', { textContent: t('该内核的状态是「{0}」，请按上面的安装命令补齐依赖后重新扫描。', { 0: orDash(kernel.statusLabel || kernel.status) }) })
+      h('span', {
+        textContent: t('该内核的状态是「{0}」。缺 Python 模块点上面的「自动安装依赖」即可；外部程序需要自己装好后重新扫描。', {
+          0: orDash(kernel.statusLabel || kernel.status),
+        }),
+      })
     );
+  }
+
+  /**
+   * 缺 Python 模块时给一个按钮（2.3.0）。
+   *
+   * 以前这里只有一句「请按上面的安装命令补齐依赖后重新扫描」——
+   * 等于把用户赶去终端自己 pip install。现在直接调 plugins.installDeps：
+   * 装进该插件自己的 vendor 目录，设置的镜像不通会自动回退官方源，
+   * 装完自动重新探测，用户只需要点一下。
+   */
+  function depsFix(kernel) {
+    const requires = Array.isArray(kernel.requires) ? kernel.requires.filter(Boolean) : [];
+    if (!requires.length || kernel.status === 'ready') return null;
+
+    const label = h('span', { textContent: t('自动安装依赖') });
+    const btn = h('button.btn.btn--primary', { type: 'button' }, label);
+    const strip = h('div.strip.strip--warn', null,
+      h('span', { textContent: t('缺少 Python 模块：{0}', { 0: requires.join('、') }) }),
+      btn,
+      h('span.dim', { style: { fontSize: '12px' }, textContent: t('装进插件自己的目录，卸载时一并删除') })
+    );
+
+    let busy = false;
+    const idle = () => {
+      busy = false;
+      btn.disabled = false;
+      label.textContent = t('自动安装依赖');
+    };
+    btn.addEventListener('click', async () => {
+      if (busy) return;
+      busy = true;
+      btn.disabled = true;
+      label.textContent = t('正在安装依赖…');
+      try {
+        const res = await window.khs.plugins.installDeps({ id: kernel.id });
+        if (!res || !res.ok) {
+          ctx.toast.error(t('依赖安装失败'), depsFailureDetail(res));
+          idle();
+          return;
+        }
+        ctx.toast.success(res.alreadyOk ? '依赖已齐全' : '依赖安装完成', {
+          text: res.indexUsed ? t('来源 {0}', { 0: res.indexUsed }) : kernel.id,
+        });
+        await ctx.refreshKernels({ announce: false });
+        openDetail(kernel.id);   // 重新探测之后把详情刷新一遍
+      } catch (err) {
+        ctx.reportError(t('依赖安装异常'), ctx.wrapError(err));
+        idle();
+      }
+    });
+    return strip;
   }
 
   /* --------------------------------------------------------------- 事件 */

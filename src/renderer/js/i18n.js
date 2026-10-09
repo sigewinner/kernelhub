@@ -532,6 +532,25 @@ const EN = {
   '依赖已安装：{0}': 'Dependencies installed: {0}',
   '来源 {0}': 'Source {0}',
   '依赖安装异常': 'Dependency install error',
+  // 2.3.0：依赖一键自动安装（省去用户自己去终端 pip install）
+  '自动安装依赖': 'Install dependencies',
+  '正在安装依赖…': 'Installing dependencies…',
+  '装进插件自己的目录，卸载时一并删除': 'Installed into the plugin’s own folder and removed with the plugin',
+  '{0} 个插件缺少依赖': '{0} plugins are missing dependencies',
+  '一键全部自动安装': 'Install all automatically',
+  '依赖已装好，正在重新探测…': 'Dependencies installed, rescanning…',
+  '该源上没有适配你 Python {0} 的包': 'That source has no build for your Python {0}',
+  '网络不通或超时，请检查代理后重试': 'Network unreachable or timed out — check your proxy and retry',
+  '没有写入权限（目录可能被占用或被安全软件拦截）':
+    'No write permission (the folder may be locked or blocked by security software)',
+  '这个 Python 里没有 pip，请先安装 pip': 'This Python has no pip — install pip first',
+  '没有找到可用的 Python 解释器': 'No usable Python interpreter found',
+  '安装依赖': 'Install deps',
+  '复制手动安装命令': 'Copy manual command',
+  '已复制安装命令': 'Command copied',
+  '可直接粘贴到终端执行': 'Paste it into a terminal to run',
+  '依赖装好了，可以在转换页使用了': 'Dependencies are ready — usable on the Convert page.',
+  '手动安装': 'Manual install',
   '卸载插件「{0}」？': 'Uninstall plugin “{0}”?',
   '卸载': 'Uninstall',
   '会删除 {0} 目录（{1}）。\n对应的内核会立刻从转换页消失。':
@@ -587,8 +606,9 @@ const EN = {
   '引擎与依赖': 'Engine & dependencies',
   '原始 kernel.json': 'Raw kernel.json',
   '{0} 字符': '{0} characters',
-  '该内核的状态是「{0}」，请按上面的安装命令补齐依赖后重新扫描。':
-    'This kernel is “{0}” — run the install command above, then rescan.',
+  '该内核的状态是「{0}」。缺 Python 模块点上面的「自动安装依赖」即可；外部程序需要自己装好后重新扫描。':
+    'This kernel is “{0}”. For missing Python modules, use “Install dependencies” above; external tools must be installed by you, then rescan.',
+  '该内核对 Python 模块的依赖已就绪，可以直接使用。': 'This kernel’s Python modules are ready to use.',
 
   /* ---------------------------------------------------------- 格式视图 */
   '格式表': 'Format table',

@@ -1338,6 +1338,16 @@ async function runSelfTest() {
         Boolean(depsSeeded && depsSeeded.ok && (depsSeeded.missing || []).length === 0),
         depsSeeded ? `missing=${(depsSeeded.missing || []).join(',') || '（无）'}` : '取不到依赖信息'
       );
+      /*
+       * 2.3.0：依赖齐全时补装接口应直接返回 alreadyOk（不发网络请求、不重复装）。
+       * 这条同时验证「一键自动安装」那条通路是通的 —— 界面上点按钮调的就是它。
+       */
+      const depsNoop = await js(`window.khs.plugins.installDeps({ id: 'data-table' })`);
+      step(
+        '依赖齐全时不重复安装（自动补装接口返回 alreadyOk）',
+        Boolean(depsNoop && depsNoop.ok && depsNoop.alreadyOk === true),
+        depsNoop ? `ok=${depsNoop.ok} alreadyOk=${depsNoop.alreadyOk}` : '取不到返回值'
+      );
 
       /* ---- 2.0.4：开启动画、侧栏指示块、右下角实时信息、页头只剩标题 ---- */
 
