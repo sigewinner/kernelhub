@@ -565,7 +565,7 @@ namespace KhsSetup
             Text = "KernelHub Studio 安装程序";
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(560, 340);
+            ClientSize = new Size(600, 380);
             BackColor = Brand.Paper;
             DoubleBuffered = true;
             KeyPreview = true;
@@ -646,14 +646,15 @@ namespace KhsSetup
             }
             if (_s <= 0.1f) _s = 1f;
             Program.Log("缩放: _s=" + _s.ToString("0.###") + " DeviceDpi=" + SafeDpi() +
-                        " 窗口=" + S(560) + "x" + S(340));
+                        " 窗口=" + S(600) + "x" + S(380));
 
-            ClientSize = new Size(S(560), S(340));
-            _closeRect = S(520, 14, 24, 24);
-            _pathRect = S(32, 162, 400, 34);
-            _browseRect = S(440, 162, 88, 34);
-            _checkRect = S(34, 232, 18, 18);
-            _primaryRect = S(32, 268, 496, 46);
+            ClientSize = new Size(S(600), S(380));
+            // 版式网格：外边距 40，控件纵向按 8pt 基线排布（瑞士风格的规整与留白）
+            _closeRect = S(560, 24, 20, 20);
+            _pathRect = S(40, 166, 440, 34);
+            _browseRect = S(488, 166, 72, 34);
+            _checkRect = S(40, 222, 16, 16);
+            _primaryRect = S(40, 282, 520, 44);
             ApplyRoundRegion();
             Invalidate();
         }
@@ -752,41 +753,48 @@ namespace KhsSetup
 
         private void DrawTitleBar(Graphics g)
         {
-            using (Font f = Brand.Ui(SF(9.5f), FontStyle.Bold))
+            // 字级整体收小一档（瑞士风格：层级靠留白与分组，不靠字号差）
+            using (Font f = Brand.Ui(SF(8.5f), FontStyle.Bold))
             using (SolidBrush b = new SolidBrush(Brand.Ink))
             {
-                g.DrawString("KERNELHUB STUDIO", f, b, S(32), S(20));
+                g.DrawString("KERNELHUB STUDIO", f, b, S(40), S(26));
+            }
+            // header 细分隔线：瑞士排版的横向基准线
+            using (Pen rule = new Pen(Brand.Rule, Math.Max(1f, SF(1f))))
+            {
+                g.DrawLine(rule, S(40), S(54), S(560), S(54));
             }
             Color c = _hoverClose ? Brand.Ink : Brand.Ink3;
-            using (Pen p = new Pen(c, Math.Max(1f, SF(1.4f))))
+            using (Pen p = new Pen(c, Math.Max(1f, SF(1.3f))))
             {
-                g.DrawLine(p, _closeRect.Left + S(8), _closeRect.Top + S(8), _closeRect.Right - S(8), _closeRect.Bottom - S(8));
-                g.DrawLine(p, _closeRect.Right - S(8), _closeRect.Top + S(8), _closeRect.Left + S(8), _closeRect.Bottom - S(8));
+                int inset = S(6);
+                g.DrawLine(p, _closeRect.Left + inset, _closeRect.Top + inset, _closeRect.Right - inset, _closeRect.Bottom - inset);
+                g.DrawLine(p, _closeRect.Right - inset, _closeRect.Top + inset, _closeRect.Left + inset, _closeRect.Bottom - inset);
             }
         }
 
         private void DrawReady(Graphics g, int alpha)
         {
-            using (Font fTitle = Brand.Ui(SF(17f), FontStyle.Regular))
-            using (Font fLabel = Brand.Ui(SF(9f), FontStyle.Regular))
-            using (Font fBody = Brand.Ui(SF(9.5f), FontStyle.Regular))
+            using (Font fTitle = Brand.Ui(SF(13f), FontStyle.Regular))
+            using (Font fLabel = Brand.Ui(SF(8f), FontStyle.Regular))
+            using (Font fBody = Brand.Ui(SF(8.5f), FontStyle.Regular))
             {
-                DrawString(g, "选择安装位置", fTitle, Brand.Ink, S(32), S(68), alpha);
-                DrawString(g, "KernelHub Studio 将安装到下面的文件夹。", fBody, Brand.Ink2, S(32), S(106), alpha);
-                DrawString(g, "安装目录", fLabel, Brand.Ink3, S(32), S(142), alpha);
+                DrawString(g, "选择安装位置", fTitle, Brand.Ink, S(40), S(80), alpha);
+                DrawString(g, "KernelHub Studio 将安装到下面的文件夹。", fBody, Brand.Ink2, S(40), S(112), alpha);
+                DrawString(g, "安装目录", fLabel, Brand.Ink3, S(40), S(148), alpha);
 
                 // 路径框
-                using (GraphicsPath path = Round(_pathRect, S(8)))
+                using (GraphicsPath path = Round(_pathRect, S(4)))
                 using (Pen p = new Pen(Brand.Rule))
                 using (SolidBrush b = new SolidBrush(Brand.Paper))
                 {
                     g.FillPath(b, path);
                     g.DrawPath(p, path);
                 }
-                using (Font fMono = Brand.Ui(SF(9f), FontStyle.Regular))
+                using (Font fMono = Brand.Ui(SF(8.5f), FontStyle.Regular))
                 {
-                    RectangleF inner = new RectangleF(_pathRect.Left + S(12), _pathRect.Top + S(8),
-                        _pathRect.Width - S(24), _pathRect.Height - S(12));
+                    RectangleF inner = new RectangleF(_pathRect.Left + S(10), _pathRect.Top + S(9),
+                        _pathRect.Width - S(20), _pathRect.Height - S(14));
                     using (StringFormat sf = new StringFormat())
                     {
                         sf.Trimming = StringTrimming.EllipsisPath;
@@ -800,8 +808,8 @@ namespace KhsSetup
 
                 DrawGhostButton(g, _browseRect, "更改", alpha);
 
-                // 复选框
-                using (GraphicsPath path = Round(_checkRect, S(4)))
+                // 复选框（16px，方一点，符合瑞士风格的几何感）
+                using (GraphicsPath path = Round(_checkRect, S(2)))
                 using (SolidBrush fill = new SolidBrush(_makeDesktop ? Brand.Accent : Brand.Paper))
                 using (Pen border = new Pen(_makeDesktop ? Brand.Accent : Brand.Rule))
                 {
@@ -810,13 +818,13 @@ namespace KhsSetup
                 }
                 if (_makeDesktop)
                 {
-                    using (Pen tick = new Pen(Brand.Paper, Math.Max(1.6f, SF(2f))))
+                    using (Pen tick = new Pen(Brand.Paper, Math.Max(1.4f, SF(1.6f))))
                     {
-                        g.DrawLine(tick, _checkRect.Left + S(4), _checkRect.Top + S(9), _checkRect.Left + S(7), _checkRect.Top + S(12));
-                        g.DrawLine(tick, _checkRect.Left + S(7), _checkRect.Top + S(12), _checkRect.Right - S(3), _checkRect.Top + S(5));
+                        g.DrawLine(tick, _checkRect.Left + S(4), _checkRect.Top + S(8), _checkRect.Left + S(6), _checkRect.Top + S(11));
+                        g.DrawLine(tick, _checkRect.Left + S(6), _checkRect.Top + S(11), _checkRect.Right - S(3), _checkRect.Top + S(4));
                     }
                 }
-                DrawString(g, "创建桌面快捷方式", fBody, Brand.Ink2, _checkRect.Right + S(8), _checkRect.Top + S(1), alpha);
+                DrawString(g, "创建桌面快捷方式", fBody, Brand.Ink2, _checkRect.Right + S(8), _checkRect.Top - S(1), alpha);
 
                 DrawPrimaryButton(g, alpha);
             }
@@ -824,14 +832,34 @@ namespace KhsSetup
 
         private void DrawWorking(Graphics g, int alpha)
         {
-            using (Font fTitle = Brand.Ui(SF(17f), FontStyle.Regular))
-            using (Font fBody = Brand.Ui(SF(9.5f), FontStyle.Regular))
-            {
-                DrawString(g, "正在安装", fTitle, Brand.Ink, S(32), S(68), alpha);
-                DrawString(g, _status, fBody, Brand.Ink2, S(32), S(106), alpha);
+            /*
+             * 安装中这一屏没有底部按钮，内容若仍贴顶会显得上重下空。
+             * 把整块（标题 / 状态与百分比 / 进度条）在「header 细线以下」的区域垂直居中。
+             */
+            int top = S(54), bottom = S(380);
+            int blockH = S(100);
+            int y = top + (bottom - top - blockH) / 2;
 
-                Rectangle track = S(32, 150, 496, 8);
-                using (GraphicsPath tp = Round(track, S(4)))
+            using (Font fTitle = Brand.Ui(SF(13f), FontStyle.Regular))
+            using (Font fBody = Brand.Ui(SF(8.5f), FontStyle.Regular))
+            {
+                DrawString(g, "正在安装", fTitle, Brand.Ink, S(40), y, alpha);
+                DrawString(g, _status, fBody, Brand.Ink2, S(40), y + S(34), alpha);
+
+                // 百分比右对齐到同一条基线（瑞士排版的表格感）
+                RectangleF pctBox = new RectangleF(S(360), y + S(34), S(200), S(20));
+                using (StringFormat sfRight = new StringFormat())
+                {
+                    sfRight.Alignment = StringAlignment.Far;
+                    using (SolidBrush b = new SolidBrush(Color.FromArgb(alpha, Brand.Ink)))
+                    {
+                        g.DrawString(_percent + "%", fBody, b, pctBox, sfRight);
+                    }
+                }
+
+                Rectangle track = S(40, 0, 520, 6);
+                track.Y = y + S(72);
+                using (GraphicsPath tp = Round(track, S(3)))
                 using (SolidBrush tb = new SolidBrush(Brand.Track))
                 {
                     g.FillPath(tb, tp);
@@ -839,26 +867,22 @@ namespace KhsSetup
                 int w = (int)Math.Round(track.Width * (_percent / 100.0));
                 if (w > S(2))
                 {
-                    using (GraphicsPath fp = Round(new Rectangle(track.Left, track.Top, w, track.Height), S(4)))
+                    using (GraphicsPath fp = Round(new Rectangle(track.Left, track.Top, w, track.Height), S(3)))
                     using (SolidBrush fb = new SolidBrush(Brand.Accent))
                     {
                         g.FillPath(fb, fp);
                     }
-                }
-                using (Font fPct = Brand.Ui(SF(13f), FontStyle.Regular))
-                {
-                    DrawString(g, _percent + "%", fPct, Brand.Ink, S(32), S(180), alpha);
                 }
             }
         }
 
         private void DrawDone(Graphics g, int alpha)
         {
-            using (Font fTitle = Brand.Ui(SF(17f), FontStyle.Regular))
-            using (Font fBody = Brand.Ui(SF(9.5f), FontStyle.Regular))
+            using (Font fTitle = Brand.Ui(SF(13f), FontStyle.Regular))
+            using (Font fBody = Brand.Ui(SF(8.5f), FontStyle.Regular))
             {
-                DrawString(g, "安装完成", fTitle, Brand.Ink, S(32), S(68), alpha);
-                RectangleF line = new RectangleF(S(32), S(106), S(496), S(24));
+                DrawString(g, "安装完成", fTitle, Brand.Ink, S(40), S(80), alpha);
+                RectangleF line = new RectangleF(S(40), S(112), S(520), S(20));
                 using (StringFormat sf = new StringFormat())
                 {
                     sf.Trimming = StringTrimming.EllipsisPath;
@@ -868,12 +892,12 @@ namespace KhsSetup
                         g.DrawString("已安装到 " + _dir, fBody, b, line, sf);
                     }
                 }
-                DrawString(g, "已安装的插件与设置保存在用户目录，不受重装影响。", fBody, Brand.Ink3, S(32), S(130), alpha);
+                DrawString(g, "已安装的插件与设置保存在用户目录，不受重装影响。", fBody, Brand.Ink3, S(40), S(136), alpha);
                 if (_warnText.Length > 0)
                 {
-                    using (Font fWarn = Brand.Ui(SF(8.5f), FontStyle.Regular))
+                    using (Font fWarn = Brand.Ui(SF(8f), FontStyle.Regular))
                     {
-                        RectangleF wbox = new RectangleF(S(32), S(154), S(496), S(40));
+                        RectangleF wbox = new RectangleF(S(40), S(162), S(520), S(40));
                         using (SolidBrush b = new SolidBrush(Color.FromArgb(alpha, Brand.Warn)))
                         {
                             g.DrawString(_warnText, fWarn, b, wbox);
@@ -891,21 +915,19 @@ namespace KhsSetup
          */
         private void DrawBlocked(Graphics g, int alpha)
         {
-            using (Font fTitle = Brand.Ui(SF(17f), FontStyle.Regular))
-            using (Font fBody = Brand.Ui(SF(9.5f), FontStyle.Regular))
-            using (Font fMono = Brand.Ui(SF(8.5f), FontStyle.Regular))
+            using (Font fTitle = Brand.Ui(SF(13f), FontStyle.Regular))
+            using (Font fBody = Brand.Ui(SF(8.5f), FontStyle.Regular))
+            using (Font fMono = Brand.Ui(SF(8f), FontStyle.Regular))
             {
-                DrawString(g, "无法从当前位置安装", fTitle, Brand.Accent, S(32), S(60), alpha);
-                // 正文用矩形自动换行；高度要够 3 行（9.5pt 在 150% 下每行约 19px），
-                // 否则会压到下面的「当前文件」那一行（实测踩过）
-                RectangleF box = new RectangleF(S(32), S(96), S(496), S(80));
+                DrawString(g, "无法从当前位置安装", fTitle, Brand.Accent, S(40), S(80), alpha);
+                RectangleF box = new RectangleF(S(40), S(110), S(520), S(72));
                 using (SolidBrush b = new SolidBrush(Color.FromArgb(alpha, Brand.Ink2)))
                 {
                     g.DrawString("这个安装包处于受限目录（低完整性），Windows 不允许它写入用户目录，因此装不上。" +
                                  "把安装包复制到 D:\\ 或桌面，再从副本运行即可 —— 不需要管理员权限。",
                         fBody, b, box);
                 }
-                RectangleF path = new RectangleF(S(32), S(184), S(496), S(30));
+                RectangleF path = new RectangleF(S(40), S(190), S(520), S(28));
                 using (StringFormat sf = new StringFormat())
                 {
                     sf.Trimming = StringTrimming.EllipsisPath;
@@ -928,19 +950,19 @@ namespace KhsSetup
 
         private void DrawFailed(Graphics g, int alpha)
         {
-            using (Font fTitle = Brand.Ui(SF(17f), FontStyle.Regular))
-            using (Font fBody = Brand.Ui(SF(9.5f), FontStyle.Regular))
+            using (Font fTitle = Brand.Ui(SF(13f), FontStyle.Regular))
+            using (Font fBody = Brand.Ui(SF(8.5f), FontStyle.Regular))
             {
-                DrawString(g, "安装失败", fTitle, Brand.Accent, S(32), S(68), alpha);
+                DrawString(g, "安装失败", fTitle, Brand.Accent, S(40), S(80), alpha);
                 // 错误按矩形自动换行，不再截断 —— 信息完整才好排查
-                RectangleF box = new RectangleF(S(32), S(104), S(496), S(84));
+                RectangleF box = new RectangleF(S(40), S(110), S(520), S(90));
                 using (SolidBrush b = new SolidBrush(Color.FromArgb(alpha, Brand.Ink2)))
                 {
                     g.DrawString(_error, fBody, b, box);
                 }
-                using (Font fHint = Brand.Ui(SF(8.5f), FontStyle.Regular))
+                using (Font fHint = Brand.Ui(SF(8f), FontStyle.Regular))
                 {
-                    DrawString(g, "详细日志：" + Program.LogPath(), fHint, Brand.Ink3, S(32), S(196), alpha);
+                    DrawString(g, "详细日志：" + Program.LogPath(), fHint, Brand.Ink3, S(40), S(212), alpha);
                 }
             }
             DrawPrimaryButton(g, alpha);
@@ -962,12 +984,13 @@ namespace KhsSetup
                 Math.Min(255, Brand.Accent.G + 16),
                 Math.Min(255, Brand.Accent.B + 16));
 
-            using (GraphicsPath path = Round(_primaryRect, S(22)))
+            // 圆角收敛到 8：瑞士风格偏几何，不用大胶囊
+            using (GraphicsPath path = Round(_primaryRect, S(8)))
             using (SolidBrush b = new SolidBrush(Color.FromArgb(alpha, baseColor)))
             {
                 g.FillPath(b, path);
             }
-            using (Font f = Brand.Ui(SF(11f), FontStyle.Bold))
+            using (Font f = Brand.Ui(SF(9.5f), FontStyle.Bold))
             using (StringFormat sf = new StringFormat())
             {
                 sf.Alignment = StringAlignment.Center;
@@ -981,14 +1004,14 @@ namespace KhsSetup
 
         private void DrawGhostButton(Graphics g, Rectangle r, string text, int alpha)
         {
-            using (GraphicsPath path = Round(r, S(8)))
+            using (GraphicsPath path = Round(r, S(4)))
             using (SolidBrush b = new SolidBrush(Color.FromArgb(alpha, Brand.Paper)))
             using (Pen p = new Pen(Color.FromArgb(alpha, Brand.Rule)))
             {
                 g.FillPath(b, path);
                 g.DrawPath(p, path);
             }
-            using (Font f = Brand.Ui(SF(9f), FontStyle.Regular))
+            using (Font f = Brand.Ui(SF(8.5f), FontStyle.Regular))
             using (StringFormat sf = new StringFormat())
             {
                 sf.Alignment = StringAlignment.Center;
