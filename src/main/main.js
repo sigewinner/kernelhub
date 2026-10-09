@@ -1807,20 +1807,37 @@ async function runSelfTest() {
         return true;
       })()`);
       await settle(900);
-      const card = await js(`(() => {
-        const root = document.querySelector('.sheet-host');
-        const panel = document.querySelector('.sheet');
-        const body = document.querySelector('.detail-center');
-        if (!root || !panel) return null;
-        const cs = getComputedStyle(panel);
-        return {
-          open: root.dataset.open === 'true',
-          transition: cs.transitionDuration,
-          textAlign: body ? getComputedStyle(body).textAlign : '',
-          sections: Array.from(document.querySelectorAll('.detail-section__title')).map((e) => e.textContent.trim()),
-          text: (panel.innerText || '').replace(/\\s+/g, ' ').slice(0, 130),
-        };
-      })()`);
+      /*
+       * 详情卡的 open 标记是异步写上的（要等内核详情回来才 open()），
+       * 固定等 900ms 偶尔不够 —— 实测在慢一点的机器/磁盘上会偶发
+       * 「打开=false」而其余断言全过。改成轮询等它打开。
+       */
+      const card = await (async () => {
+        for (let i = 0; i < 12; i += 1) {
+          const cur = await js(`(() => {
+            const root = document.querySelector('.sheet-host');
+            const panel = document.querySelector('.sheet');
+            const body = document.querySelector('.detail-center');
+            if (!root || !panel) return null;
+            const cs = getComputedStyle(panel);
+            return {
+              open: root.dataset.open === 'true',
+              transition: cs.transitionDuration,
+              textAlign: body ? getComputedStyle(body).textAlign : '',
+              sections: Array.from(document.querySelectorAll('.detail-section__title')).map((e) => e.textContent.trim()),
+              text: (panel.innerText || '').replace(/\\s+/g, ' ').slice(0, 130),
+            };
+          })()`);
+          if (cur && cur.open) return cur;
+          await settle(250);
+        }
+        return await js(`(() => {
+          const root = document.querySelector('.sheet-host');
+          const panel = document.querySelector('.sheet');
+          if (!root || !panel) return null;
+          return { open: root.dataset.open === 'true', transition: getComputedStyle(panel).transitionDuration, textAlign: '', sections: [], text: '' };
+        })()`);
+      })();
       step(
         '点格式行后详情从右侧缓慢弹出',
         Boolean(card) &&
