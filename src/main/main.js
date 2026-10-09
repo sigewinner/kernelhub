@@ -37,6 +37,11 @@ const pluginName = require('../shared/pluginName');
 const { clearProbeCache } = require('../engine/python');
 const deps = require('../engine/deps');
 const update = require('../engine/update');
+/** 2.3.3：外部程序解析与常见安装位置（自动安装后用它确认装好了没） */
+const { resolveExecutable, findInKnownLocations } = require('../engine/executables');
+/** 2.3.3：外部程序自动安装（官方安装包静默装 / 官方免安装 zip 解压） */
+const exeInstall = require('../engine/exeInstall');
+const { recipeOf, exeLabelOf } = exeInstall;
 const { formatOfPath, basenameOf, extOf, CKP_VERSION } = require('../shared/protocol');
 const { humanSize } = catalog;
 
@@ -737,6 +742,8 @@ function registerIpc() {
       python: probe.python || '',
       vendorDir,
       external: pluginExternal(pid),
+      /** 2.3.3：外部程序里**当前没找到**的那些（含能否自动安装） */
+      externalMissing: pluginMissingExes(pid),
       installHint: (entry && entry.manifest && entry.manifest.installHint) || '',
       /** 界面要给用户两个选择：镜像 / 官方 */
       indexPreferred: settings.get('pipIndexUrl', '') || '',
@@ -759,7 +766,17 @@ function registerIpc() {
     }
     const probe = deps.probeMissing({ requires: pluginRequires(pid), vendorDir });
     if (!probe.missing.length) {
-      return { ok: true, alreadyOk: true, id: pid, kernel: registry.get(pid) ? catalog.kernelView(registry.get(pid)) : null };
+      /*
+       * Python 依赖齐了，但可能还缺**外部程序**（2.3.3）。
+       * 这时不能只说「依赖已齐全」—— 那会和「找不到可执行文件 'gs'」自相矛盾。
+       */
+      return {
+        ok: true,
+        alreadyOk: true,
+        id: pid,
+        externalMissing: pluginMissingExes(pid),
+        kernel: registry.get(pid) ? catalog.kernelView(registry.get(pid)) : null,
+      };
     }
     pluginProgress({ phase: 'deps', percent: 0, message: `准备安装 ${probe.packages.length} 个依赖…` });
     const result = await deps.installMissing({
@@ -805,8 +822,74 @@ function registerIpc() {
     pipIndexUrl: settings.get('pipIndexUrl', ''),
   }));
 
-  /* -- 外部程序（2.3.2）---------------------------------------------------- */
+  /* -- 外部程序（2.3.2 / 2.3.3）-------------------------------------------- */
 
+  /**
+   * 这个插件的**外部程序**有没有就位（2.3.3）。
+   *
+   * 为什么要它：以前「依赖」只统计 Python 模块，于是插件行显示「Python 依赖已齐全」，
+   * 可内核那边明明写着「找不到可执行文件 'gs'」—— 两句话自相矛盾，
+   * 用户看到的就是「说齐全却用不了」。现在外部程序也算进依赖。
+   */
+  function pluginMissingExes(id) {
+    const entry = registry.get(String(id || ''));
+    if (!entry) return [];
+    const specs = ((entry.manifest || {}).xCli || {}).executables || {};
+    const out = [];
+    for (const name of Object.keys(specs)) {
+      try {
+        resolveExecutable(name, specs[name], {
+          hubRoot: registry.hubRoot,
+          sysPath: registry.sysPath,
+          pluginDir: entry.directory,
+          exePaths: settings.get('exePaths', {}),
+        });
+      } catch (err) {
+        out.push({ name, label: exeLabelOf(name), auto: Boolean(recipeOf(name)) });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * 自动安装一个外部程序（2.3.3）。
+   * 实现放在 engine/exeInstall.js（配方 + 下载 + 静默安装/解压 + 定位），这里只做编排：
+   * 装完把路径写进设置 exePaths、清探测缓存、把新的内核列表回给界面。
+   */
+  handle('kernels:installExe', async ({ name, id } = {}) => {
+    const exeName = String(name || '').trim();
+    const recipe = recipeOf(exeName);
+    if (!recipe) {
+      return { ok: false, canAuto: false, error: `暂时不支持自动安装 ${exeName}，请点「打开下载页」手动装` };
+    }
+    const result = await exeInstall.installExe({
+      name: exeName,
+      toolsDir: path.join(resolveStateDir(), 'tools'),
+      onProgress: (payload) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('evt:exe:progress', { name: exeName, label: recipe.label, ...payload });
+        }
+      },
+    });
+    if (!result.ok) return { ok: false, canAuto: result.canAuto, error: result.error };
+
+    const current = { ...(settings.get('exePaths', {}) || {}) };
+    for (const n of recipe.expect) current[n] = result.path;
+    current[exeName] = result.path;
+    settings.patch({ exePaths: current });
+    registry.exePaths = { ...current };
+    clearProbeCache();
+
+    const kernels = (reloadRegistry(), registry.allEntries().map(catalog.kernelView));
+    const entry = id ? registry.get(String(id)) : null;
+    return {
+      ok: true,
+      path: result.path,
+      label: result.label,
+      kernels,
+      kernel: entry ? catalog.kernelDetail(entry) : null,
+    };
+  });
   /**
    * 让用户直接指定外部可执行文件。
    *
@@ -835,7 +918,7 @@ function registerIpc() {
     }
     const current = { ...(settings.get('exePaths', {}) || {}) };
     current[exeName] = picked;
-    settings.set('exePaths', current);
+    settings.patch({ exePaths: current });
     registry.exePaths = { ...current };
     clearProbeCache();
     const kernels = (reloadRegistry(), registry.allEntries().map(catalog.kernelView));
@@ -854,7 +937,7 @@ function registerIpc() {
     const exeName = String(name || '').trim();
     const current = { ...(settings.get('exePaths', {}) || {}) };
     delete current[exeName];
-    settings.set('exePaths', current);
+    settings.patch({ exePaths: current });
     registry.exePaths = { ...current };
     clearProbeCache();
     return {
@@ -1472,7 +1555,25 @@ async function runSelfTest() {
         exePathsConfigured !== null && typeof exePathsConfigured === 'object',
         `exePaths=${JSON.stringify(exePathsConfigured || {})}`
       );
-
+      /*
+       * 2.3.3：这条断言是为了**锁住设置的写入路径**。
+       * 上一版我把写入写成了 settings.set(...)（这个方法根本不存在），
+       * 「选择可执行文件…」点下去会直接抛错 —— 而它要弹文件对话框、没法自动化，
+       * 所以用 clearExe 传一个不存在的名字走同一段写入代码来覆盖。
+       */
+      const exeWrite = await js(`window.khs.kernels.clearExe('__selftest_none__')`);
+      step(
+        '外部程序路径能写进设置（clearExe 覆盖同一段写入代码）',
+        Boolean(exeWrite && exeWrite.ok),
+        exeWrite ? `ok=${exeWrite.ok} name=${exeWrite.name}` : '取不到返回值'
+      );
+      /* 外部程序的自动安装：配方要认得 gs 与 pandoc（装不装是用户点的事，这里只验配方） */
+      const recipes = { gs: Boolean(recipeOf('gswin64c')), pandoc: Boolean(recipeOf('pandoc')) };
+      step(
+        '外部程序自动安装的配方已就绪（gs / pandoc）',
+        recipes.gs && recipes.pandoc,
+        `gs=${recipes.gs} pandoc=${recipes.pandoc}`
+      );
       /* ---- 2.0.4：开启动画、侧栏指示块、右下角实时信息、页头只剩标题 ---- */
 
       const splash = await js(`window.__khsTest.splashState()`);

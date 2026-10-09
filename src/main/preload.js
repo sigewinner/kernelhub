@@ -52,6 +52,7 @@ const EVENT_CHANNELS = [
   'evt:log',
   'evt:window',
   'evt:plugin:progress',
+  'evt:exe:progress',
   'evt:update:progress',
   'cmd',
 ];
@@ -105,6 +106,8 @@ const api = {
     pickExe: (payload) => invoke('kernels:pickExe', payload),
     clearExe: (name) => invoke('kernels:clearExe', { name }),
     alternatives: (payload) => invoke('kernels:alternatives', payload),
+    /** 2.3.3：自动安装外部程序（官方安装包静默装 / 官方免安装 zip 解压） */
+    installExe: (payload) => invoke('kernels:installExe', payload),
   },
 
   /* -- 插件商店 ----------------------------------------------------------- */

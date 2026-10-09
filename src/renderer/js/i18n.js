@@ -563,6 +563,16 @@ const EN = {
   '已指定 {0}': 'Set {0}',
   '设置可执行文件失败': 'Failed to set the executable',
   '回「转换」页即可用它，不再需要外部程序': 'Switch to Convert to use it — no external program needed',
+  // 2.3.3：外部程序自动安装
+  '自动安装（官方，需一次确认）': 'Auto-install (official, one confirmation)',
+  '正在安装…': 'Installing…',
+  '正在准备…': 'Preparing…',
+  '自动安装失败': 'Auto-install failed',
+  '自动安装异常': 'Auto-install error',
+  '{0} 已安装': '{0} installed',
+  'Python 依赖已齐全': 'Python dependencies are ready',
+  '但还缺外部程序：{0}': 'but an external program is still missing: {0}',
+  '自动安装': 'Auto-install',
   '卸载插件「{0}」？': 'Uninstall plugin “{0}”?',
   '卸载': 'Uninstall',
   '会删除 {0} 目录（{1}）。\n对应的内核会立刻从转换页消失。':

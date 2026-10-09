@@ -578,9 +578,21 @@ export async function mount(host, ctx) {
           idle();
           return;
         }
-        ctx.toast.success(res.alreadyOk ? '依赖已齐全' : '依赖安装完成', {
-          text: res.indexUsed ? t('来源 {0}', { 0: res.indexUsed }) : kernel.id,
-        });
+        /*
+         * 2.3.3：Python 依赖齐了不等于能用 —— 还可能缺外部程序。
+         * 以前这里无条件说「依赖已齐全」，于是和内核那句「找不到可执行文件 'gs'」
+         * 自相矛盾（用户看到的就是「说齐全却用不了」）。
+         */
+        const missingExes = Array.isArray(res.externalMissing) ? res.externalMissing : [];
+        if (res.alreadyOk && missingExes.length) {
+          ctx.toast.success(t('Python 依赖已齐全'), {
+            text: t('但还缺外部程序：{0}', { 0: missingExes.map((x) => x.label || x.name).join('、') }),
+          });
+        } else {
+          ctx.toast.success(res.alreadyOk ? '依赖已齐全' : '依赖安装完成', {
+            text: res.indexUsed ? t('来源 {0}', { 0: res.indexUsed }) : kernel.id,
+          });
+        }
         await ctx.refreshKernels({ announce: false });
         openDetail(kernel.id);   // 重新探测之后把详情刷新一遍
       } catch (err) {
@@ -623,6 +635,14 @@ export async function mount(host, ctx) {
 
     const first = names[0];
     const pick = h('button.btn.btn--sm', { type: 'button' }, h('span', { textContent: t('选择可执行文件…') }));
+    /**
+     * 2.3.3：能自动装就直接给一个按钮。
+     * Ghostscript 走官方安装包静默安装（会弹一次管理员确认），Pandoc 走官方免安装 zip
+     * （完全不需要权限）—— 都在主进程里按配方执行。
+     */
+    const autoLabel = h('span', { textContent: t('自动安装（官方，需一次确认）') });
+    const auto = h('button.btn.btn--sm.btn--primary', { type: 'button' }, autoLabel);
+    const autoNote = h('span.dim', { style: { fontSize: '12px' }, textContent: '' });
     const home = EXE_HOME[String(first).toLowerCase()] || '';
     const openHome = home
       ? h('button.btn.btn--sm', {
@@ -634,10 +654,46 @@ export async function mount(host, ctx) {
     const altHost = h('div', { style: { marginTop: '10px' } });
     const box = h('div.strip.strip--warn', null,
       h('span', { textContent: t('需要外部程序：{0}（pip 装不了）', { 0: names.join('、') }) }),
+      auto,
       pick,
       openHome
     );
+    box.appendChild(autoNote);
     box.appendChild(altHost);
+
+    // 自动安装：进度经 evt:exe:progress 回到这一行文字上
+    const offExeProgress = window.khs.on('evt:exe:progress', (payload) => {
+      if (!payload || !names.includes(payload.name)) return;
+      if (payload.message) autoNote.textContent = payload.message;
+    });
+    disposers.push(offExeProgress);
+
+    auto.addEventListener('click', async () => {
+      auto.disabled = true;
+      pick.disabled = true;
+      autoLabel.textContent = t('正在安装…');
+      autoNote.textContent = t('正在准备…');
+      try {
+        const res = await window.khs.kernels.installExe({ name: first, id: kernel.id });
+        if (!res || !res.ok) {
+          const msg = (res && res.error) || '安装失败';
+          autoNote.textContent = msg;
+          ctx.toast.error(t('自动安装失败'), msg);
+          autoLabel.textContent = t('自动安装（官方，需一次确认）');
+          auto.disabled = false;
+          pick.disabled = false;
+          return;
+        }
+        ctx.toast.success(t('{0} 已安装', { 0: first }), { text: res.path });
+        await ctx.refreshKernels({ announce: false });
+        openDetail(kernel.id);
+      } catch (err) {
+        ctx.reportError(t('自动安装异常'), ctx.wrapError(err));
+        autoLabel.textContent = t('自动安装（官方，需一次确认）');
+        auto.disabled = false;
+        pick.disabled = false;
+      }
+    });
 
     pick.addEventListener('click', async () => {
       pick.disabled = true;
