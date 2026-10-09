@@ -121,10 +121,15 @@ namespace KhsSetup
         }
 
         /**
-         * 默认安装目录（2.2.8 起默认放 D 盘）：
+         * 默认安装目录（默认放 D 盘）：
          *   1. 上次装过就沿用（读 HKCU 的 InstallLocation）
-         *   2. D:\KernelHub Studio —— 前提是 D 盘存在且可写
-         *   3. 退回 %LOCALAPPDATA%\Programs\KernelHub Studio
+         *   2. D 盘存在 → D:\KernelHub Studio
+         *   3. 没有 D 盘 → %LOCALAPPDATA%\Programs\KernelHub Studio
+         *
+         * 注意这里**不按「当前进程能不能写」来挑**：受限环境（低完整性）下进程
+         * 哪个用户目录都写不了，按可写性回退会错显示成 C 盘，把用户绕晕
+         * （实测就是这样：明明要装 D 盘，界面却显示 C 盘）。
+         * 能不能写由安装前的前置检查负责报错。
          */
         public static string DefaultDir()
         {
@@ -144,7 +149,7 @@ namespace KhsSetup
             try
             {
                 DriveInfo d = new DriveInfo("D");
-                if (d.IsReady && Writable(PreferredDir)) return PreferredDir;
+                if (d.IsReady) return PreferredDir;
             }
             catch { }
 
@@ -186,6 +191,23 @@ namespace KhsSetup
             Say(0, "正在准备…");
 
             /*
+             * 前置检查，装不进去就别浪费时间去解压 90MB。
+             * 这里刻意把两种失败分开报，用户才知道下一步该做什么。
+             */
+            if (Restricted())
+            {
+                throw new InvalidOperationException(
+                    "这个安装包所处的位置受限（低完整性），Windows 不允许它写入用户目录，" +
+                    "所以装不上。把安装包复制到 D:\\ 或桌面，再从副本运行即可 —— 不需要管理员权限。" +
+                    "当前文件：" + Assembly.GetExecutingAssembly().Location);
+            }
+            if (!Paths.Writable(_target))
+            {
+                throw new InvalidOperationException(
+                    "无法写入 " + _target + "。请点「更改」换一个安装目录。");
+            }
+
+            /*
              * 装之前先结束正在运行的实例。
              * 以前只在静默更新（/S --updated）时才做，界面安装这条路径没做 ——
              * 结果应用开着时 exe/dll 被占用，复制失败，表现就是「界面能看、装不上」。
@@ -198,7 +220,6 @@ namespace KhsSetup
             }
 
             Directory.CreateDirectory(_target);
-
             string temp = MakeTempDir();
             Program.Log("使用临时目录: " + temp);
             try
@@ -511,7 +532,7 @@ namespace KhsSetup
 
     internal sealed class SetupForm : Form
     {
-        private enum Stage { Ready, Working, Failed, Done }
+        private enum Stage { Ready, Working, Failed, Done, Blocked }
 
         private Stage _stage = Stage.Ready;
         private string _dir;
@@ -567,6 +588,18 @@ namespace KhsSetup
             MouseUp += OnMouseUp;
             MouseClick += OnMouseClick;
             KeyDown += OnKeyDown;
+
+            /*
+             * 启动就判断是不是受限环境（安装包带低完整性标签）。
+             * 是的话直接显示「无法从当前位置安装」，不给用户点「立即安装」再失败的机会 ——
+             * 实测：只在角落放一行小字提示，用户照样会点下去然后失败。
+             */
+            _restricted = Installer.Restricted();
+            if (_restricted)
+            {
+                _stage = Stage.Blocked;
+                Program.Log("检测到受限环境（写不了用户目录），显示「无法从当前位置安装」页");
+            }
         }
 
         protected override void OnHandleCreated(EventArgs e)
@@ -708,6 +741,7 @@ namespace KhsSetup
             if (_stage == Stage.Ready) DrawReady(g, alpha);
             else if (_stage == Stage.Working) DrawWorking(g, alpha);
             else if (_stage == Stage.Done) DrawDone(g, alpha);
+            else if (_stage == Stage.Blocked) DrawBlocked(g, alpha);
             else DrawFailed(g, alpha);
 
             using (Pen p = new Pen(Brand.Rule))
@@ -784,16 +818,6 @@ namespace KhsSetup
                 }
                 DrawString(g, "创建桌面快捷方式", fBody, Brand.Ink2, _checkRect.Right + S(8), _checkRect.Top + S(1), alpha);
 
-                // 受限环境的可操作提示（比一句「访问被拒绝」有用得多）
-                if (_restricted)
-                {
-                    using (Font fWarn = Brand.Ui(SF(8.5f), FontStyle.Regular))
-                    {
-                        DrawString(g, "提示：当前环境写不了用户目录。若安装失败，请把安装包复制到普通文件夹（例如 D:\\）后重试。",
-                            fWarn, Brand.Warn, S(32), S(206), alpha);
-                    }
-                }
-
                 DrawPrimaryButton(g, alpha);
             }
         }
@@ -860,6 +884,48 @@ namespace KhsSetup
             DrawPrimaryButton(g, alpha);
         }
 
+        /**
+         * 受限环境（安装包带低完整性标签）时直接显示这一页，而不是让用户点了
+         * 「立即安装」再看到一句看不懂的「访问被拒绝」。
+         * 这是实测踩过的坑：用户从受限目录里运行安装包，点安装必失败。
+         */
+        private void DrawBlocked(Graphics g, int alpha)
+        {
+            using (Font fTitle = Brand.Ui(SF(17f), FontStyle.Regular))
+            using (Font fBody = Brand.Ui(SF(9.5f), FontStyle.Regular))
+            using (Font fMono = Brand.Ui(SF(8.5f), FontStyle.Regular))
+            {
+                DrawString(g, "无法从当前位置安装", fTitle, Brand.Accent, S(32), S(60), alpha);
+                // 正文用矩形自动换行；高度要够 3 行（9.5pt 在 150% 下每行约 19px），
+                // 否则会压到下面的「当前文件」那一行（实测踩过）
+                RectangleF box = new RectangleF(S(32), S(96), S(496), S(80));
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(alpha, Brand.Ink2)))
+                {
+                    g.DrawString("这个安装包处于受限目录（低完整性），Windows 不允许它写入用户目录，因此装不上。" +
+                                 "把安装包复制到 D:\\ 或桌面，再从副本运行即可 —— 不需要管理员权限。",
+                        fBody, b, box);
+                }
+                RectangleF path = new RectangleF(S(32), S(184), S(496), S(30));
+                using (StringFormat sf = new StringFormat())
+                {
+                    sf.Trimming = StringTrimming.EllipsisPath;
+                    sf.FormatFlags = StringFormatFlags.NoWrap;
+                    using (SolidBrush b = new SolidBrush(Color.FromArgb(alpha, Brand.Ink3)))
+                    {
+                        g.DrawString("当前文件：" + SelfPath(), fMono, b, path, sf);
+                    }
+                }
+            }
+            DrawPrimaryButton(g, alpha);
+        }
+
+        /** 本安装包自身的路径（提示用户该复制哪个文件） */
+        private static string SelfPath()
+        {
+            try { return Assembly.GetExecutingAssembly().Location; }
+            catch { return "(未知)"; }
+        }
+
         private void DrawFailed(Graphics g, int alpha)
         {
             using (Font fTitle = Brand.Ui(SF(17f), FontStyle.Regular))
@@ -885,6 +951,7 @@ namespace KhsSetup
             string text = _stage == Stage.Ready ? "立即安装"
                 : _stage == Stage.Working ? "正在安装…"
                 : _stage == Stage.Done ? "立即启动"
+                : _stage == Stage.Blocked ? "打开所在文件夹"
                 : "关闭";
 
             Color baseColor = Brand.Accent;
@@ -1024,6 +1091,17 @@ namespace KhsSetup
             }
             if (_stage == Stage.Failed && _primaryRect.Contains(e.Location))
             {
+                Close();
+                return;
+            }
+            if (_stage == Stage.Blocked && _primaryRect.Contains(e.Location))
+            {
+                // 把资源管理器打开到这个安装包上，方便用户直接复制出去
+                try
+                {
+                    Process.Start("explorer.exe", "/select,\"" + SelfPath() + "\"");
+                }
+                catch { }
                 Close();
             }
         }
