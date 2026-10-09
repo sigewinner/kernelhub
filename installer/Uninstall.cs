@@ -135,9 +135,11 @@ namespace KhsUninstall
 
         private sealed class ConfirmForm : Form
         {
-            private readonly Rectangle _ok = new Rectangle(300, 148, 120, 40);
-            private readonly Rectangle _cancel = new Rectangle(168, 148, 120, 40);
+            // 设计坐标（按 DPI 缩放后使用，避免高 DPI 下字体发糊）
+            private Rectangle _ok = new Rectangle(300, 148, 120, 40);
+            private Rectangle _cancel = new Rectangle(168, 148, 120, 40);
             private bool _hoverOk;
+            private float _s = 1f;
 
             public ConfirmForm()
             {
@@ -147,6 +149,8 @@ namespace KhsUninstall
                 ClientSize = new Size(440, 210);
                 DoubleBuffered = true;
                 SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+                // 与安装器同理：缩放由 S() 负责，不要 WinForms 的字体自动缩放
+                AutoScaleMode = AutoScaleMode.None;
                 MouseClick += OnClick;
                 MouseMove += delegate(object s, MouseEventArgs e)
                 {
@@ -155,10 +159,35 @@ namespace KhsUninstall
                 };
             }
 
+            private int S(int v)
+            {
+                return (int)Math.Round(v * _s);
+            }
+
+            private float SF(float v)
+            {
+                return v * _s;
+            }
+
             protected override void OnHandleCreated(EventArgs e)
             {
                 base.OnHandleCreated(e);
-                IntPtr rgn = CreateRoundRectRgn(0, 0, Width + 1, Height + 1, 16, 16);
+                _s = 0f;
+                try
+                {
+                    uint dpi = GetDpiForWindow(Handle);
+                    if (dpi >= 48 && dpi <= 480) _s = dpi / 96f;
+                }
+                catch { }
+                if (_s <= 0.1f)
+                {
+                    try { _s = DeviceDpi / 96f; } catch { _s = 1f; }
+                }
+                if (_s <= 0.1f) _s = 1f;
+                ClientSize = new Size(S(440), S(210));
+                _ok = new Rectangle(S(300), S(148), S(120), S(40));
+                _cancel = new Rectangle(S(168), S(148), S(120), S(40));
+                IntPtr rgn = CreateRoundRectRgn(0, 0, Width + 1, Height + 1, S(16), S(16));
                 Region = Region.FromHrgn(rgn);
                 DeleteObject(rgn);
             }
@@ -167,15 +196,17 @@ namespace KhsUninstall
             {
                 Graphics g = e.Graphics;
                 g.SmoothingMode = SmoothingMode.AntiAlias;
+                // 与安装器一致：ClearType + DPI 感知，高 DPI 下才清晰
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
                 g.Clear(Color.White);
-                using (Font fTitle = Ui(14f, FontStyle.Regular))
-                using (Font fBody = Ui(9.5f, FontStyle.Regular))
+                using (Font fTitle = Ui(SF(14f), FontStyle.Regular))
+                using (Font fBody = Ui(SF(9.5f), FontStyle.Regular))
                 using (SolidBrush ink = new SolidBrush(Color.FromArgb(0x11, 0x11, 0x11)))
                 using (SolidBrush dim = new SolidBrush(Color.FromArgb(0x66, 0x66, 0x66)))
                 {
-                    g.DrawString("卸载 KernelHub Studio", fTitle, ink, 28, 32);
-                    g.DrawString("将删除程序文件、快捷方式与注册表项。", fBody, dim, 28, 68);
-                    g.DrawString("已安装的插件与设置保存在用户目录，不会被删除。", fBody, dim, 28, 90);
+                    g.DrawString("卸载 KernelHub Studio", fTitle, ink, S(28), S(32));
+                    g.DrawString("将删除程序文件、快捷方式与注册表项。", fBody, dim, S(28), S(68));
+                    g.DrawString("已安装的插件与设置保存在用户目录，不会被删除。", fBody, dim, S(28), S(90));
                 }
                 Button(g, _cancel, "取消", Color.White, Color.FromArgb(0x11, 0x11, 0x11));
                 Button(g, _ok, "卸载", Color.FromArgb(0xE8, 0x27, 0x1B), Color.White);
@@ -184,14 +215,14 @@ namespace KhsUninstall
 
             private void Button(Graphics g, Rectangle r, string text, Color bg, Color fg)
             {
-                using (GraphicsPath path = Round(r, 8))
+                using (GraphicsPath path = Round(r, S(8)))
                 using (SolidBrush b = new SolidBrush(bg))
                 using (Pen p = new Pen(Color.FromArgb(0xE4, 0xE4, 0xE4)))
                 {
                     g.FillPath(b, path);
                     g.DrawPath(p, path);
                 }
-                using (Font f = Ui(9.5f, FontStyle.Regular))
+                using (Font f = Ui(SF(9.5f), FontStyle.Regular))
                 using (StringFormat sf = new StringFormat())
                 {
                     sf.Alignment = StringAlignment.Center;
@@ -231,6 +262,9 @@ namespace KhsUninstall
 
             [DllImport("gdi32.dll")]
             private static extern IntPtr CreateRoundRectRgn(int l, int t, int r, int b, int w, int h);
+
+            [DllImport("user32.dll")]
+            private static extern uint GetDpiForWindow(IntPtr hwnd);
 
             [DllImport("gdi32.dll")]
             private static extern bool DeleteObject(IntPtr hObject);

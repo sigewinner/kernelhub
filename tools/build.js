@@ -204,7 +204,29 @@ function buildCustomInstaller() {
   return res.status === null ? 1 : res.status;
 }
 
+/**
+ * 清掉 release/ 里**其他版本**的安装包与便携版。
+ * 不清的话 report() 里的 find 会先匹配到上一版的产物，
+ * 于是提示里写着旧版本号（实测踩到：2.2.8 构建完提示 2.2.7）。
+ */
+function cleanStaleArtifacts() {
+  const out = path.join(ROOT, 'release');
+  if (!fs.existsSync(out)) return;
+  const version = require(path.join(ROOT, 'package.json')).version;
+  let removed = 0;
+  for (const name of fs.readdirSync(out)) {
+    if (!/-(setup|portable)\.exe(\.blockmap)?$/i.test(name)) continue;
+    if (name.includes(version)) continue;
+    try {
+      fs.rmSync(path.join(out, name), { force: true });
+      removed++;
+    } catch {}
+  }
+  if (removed) say(`  · 清掉 ${removed} 个旧版本产物`);
+}
+
 if (!preflight()) process.exit(1);
+cleanStaleArtifacts();
 const code = run();
 const installerCode = code === 0 ? buildCustomInstaller() : 0;
 report();

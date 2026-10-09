@@ -1,11 +1,11 @@
 /*
- * Setup.cs —— KernelHub Studio 自绘安装器（2.2.7）
+ * Setup.cs —— KernelHub Studio 自绘安装器（2.2.7 起）
  *
  * 为什么不用 NSIS 的界面：
  *   官方 NSIS 只能换图与文案（MUI2 没有任何颜色/皮肤 define，工具链里也没有皮肤引擎），
  *   做不出「无系统标题栏 + 圆角 + 品牌色大按钮 + 动画」这种现代安装界面。
  *   所以自己写一个：窗口自绘（GDI+），只用 Windows 自带的 .NET Framework，
- *   由 build 脚本用 csc.exe 编译成单个 exe。
+ *   由 tools/build-installer.js 用 csc.exe 编译成单个 exe。
  *
  * 组成：
  *   · 本文件         安装器 UI + 安装逻辑
@@ -16,7 +16,7 @@
  *   （无参数）        显示界面
  *   /S               静默安装（供应用内更新调用），不显示界面、不启动应用
  *   --updated        与 /S 同时出现时表示「更新」：先结束正在运行的实例
- *   /D=<目录>        指定安装目录（/D 必须放在最后，NSIS 风格，静默模式也用得上）
+ *   /D=<目录>        指定安装目录（静默模式也用得上）
  *   /NOLAUNCH        装完不启动
  *
  * 【重要】这份代码要用 .NET Framework 自带的 csc.exe 编译，那是 **C# 5** 编译器：
@@ -53,6 +53,7 @@ namespace KhsSetup
         public static readonly Color Rule = Color.FromArgb(0xE4, 0xE4, 0xE4);
         public static readonly Color Hover = Color.FromArgb(0xF4, 0xF4, 0xF4);
         public static readonly Color Track = Color.FromArgb(0xEE, 0xEE, 0xEE);
+        public static readonly Color Warn = Color.FromArgb(0xC8, 0x6A, 0x00);
 
         public static Font Ui(float size, FontStyle style)
         {
@@ -90,10 +91,43 @@ namespace KhsSetup
     internal static class Paths
     {
         public const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\KernelHub Studio";
+        public const string PreferredDir = @"D:\KernelHub Studio";
 
+        public static string AppDataDir()
+        {
+            return Path.Combine(
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs"),
+                "KernelHub Studio");
+        }
+
+        /** 目录（或其最近存在的上级）能不能写 —— 用来判断候选安装目录是否可用 */
+        public static bool Writable(string dir)
+        {
+            try
+            {
+                string probe = dir;
+                while (!Directory.Exists(probe))
+                {
+                    string parent = Path.GetDirectoryName(probe);
+                    if (string.IsNullOrEmpty(parent) || parent == probe) break;
+                    probe = parent;
+                }
+                string file = Path.Combine(probe, "khs-wprobe-" + Guid.NewGuid().ToString("N") + ".tmp");
+                File.WriteAllText(file, "probe");
+                File.Delete(file);
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /**
+         * 默认安装目录（2.2.8 起默认放 D 盘）：
+         *   1. 上次装过就沿用（读 HKCU 的 InstallLocation）
+         *   2. D:\KernelHub Studio —— 前提是 D 盘存在且可写
+         *   3. 退回 %LOCALAPPDATA%\Programs\KernelHub Studio
+         */
         public static string DefaultDir()
         {
-            // 已经装过就沿用原目录（和应用内「静默更新沿用首次安装目录」一致）
             try
             {
                 using (RegistryKey k = Registry.CurrentUser.OpenSubKey(UninstallKey))
@@ -106,9 +140,15 @@ namespace KhsSetup
                 }
             }
             catch { }
-            return Path.Combine(
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs"),
-                "KernelHub Studio");
+
+            try
+            {
+                DriveInfo d = new DriveInfo("D");
+                if (d.IsReady && Writable(PreferredDir)) return PreferredDir;
+            }
+            catch { }
+
+            return AppDataDir();
         }
 
         public static string StartMenuLink()
@@ -126,13 +166,14 @@ namespace KhsSetup
         }
     }
 
-    /** 解压 + 安装，带进度回调 */
+    /** 解压 + 安装，带进度回调；非致命问题收集成 warnings */
     internal sealed class Installer
     {
         public const string ExeName = "KernelHub Studio.exe";
 
         private readonly string _target;
         private readonly Action<int, string> _report;
+        public readonly List<string> Warnings = new List<string>();
 
         public Installer(string target, Action<int, string> report)
         {
@@ -143,11 +184,23 @@ namespace KhsSetup
         public void Run()
         {
             Say(0, "正在准备…");
+
+            /*
+             * 装之前先结束正在运行的实例。
+             * 以前只在静默更新（/S --updated）时才做，界面安装这条路径没做 ——
+             * 结果应用开着时 exe/dll 被占用，复制失败，表现就是「界面能看、装不上」。
+             */
+            int killed = KillRunning();
+            if (killed > 0)
+            {
+                Say(1, "已关闭正在运行的程序（" + killed + " 个）");
+                Thread.Sleep(600);
+            }
+
             Directory.CreateDirectory(_target);
 
             string temp = MakeTempDir();
             Program.Log("使用临时目录: " + temp);
-            Directory.CreateDirectory(temp);
             try
             {
                 string sevenZip = Path.Combine(temp, "sevenzip.exe");
@@ -161,22 +214,40 @@ namespace KhsSetup
                 Say(88, "正在复制到安装目录…");
                 CopyTree(Path.Combine(temp, "app"), _target);
 
+                string exePath = Path.Combine(_target, ExeName);
+                if (!File.Exists(exePath))
+                {
+                    throw new InvalidOperationException(
+                        "主程序没有复制成功。" + (Warnings.Count > 0 ? "（" + Warnings[0] + "）" : "") +
+                        " 请先关闭正在运行的 KernelHub Studio 再试一次。");
+                }
+
                 Say(93, "正在写入卸载信息…");
-                string uninstaller = Path.Combine(_target, "uninstall.exe");
-                WriteResource("uninstall.exe", uninstaller);
+                try
+                {
+                    WriteResource("uninstall.exe", Path.Combine(_target, "uninstall.exe"));
+                }
+                catch (Exception ex) { Warn("卸载程序写入失败：" + ex.Message); }
 
                 Say(95, "正在创建快捷方式…");
-                CreateShortcuts();
+                // 装到临时目录（自检/测试）时不建桌面快捷方式，免得污染桌面
+                CreateShortcuts(_target.StartsWith(Path.GetTempPath(), StringComparison.OrdinalIgnoreCase));
 
                 Say(98, "正在写入注册表…");
-                WriteRegistry(uninstaller);
+                WriteRegistry(Path.Combine(_target, "uninstall.exe"));
 
-                Say(100, "安装完成");
+                Say(100, Warnings.Count == 0 ? "安装完成" : "安装完成（" + Warnings.Count + " 条提示）");
             }
             finally
             {
                 try { Directory.Delete(temp, true); } catch { }
             }
+        }
+
+        private void Warn(string text)
+        {
+            Warnings.Add(text);
+            Program.Log("警告: " + text);
         }
 
         private void Say(int percent, string text)
@@ -186,12 +257,11 @@ namespace KhsSetup
 
         /**
          * 找一个能建目录的临时位置，依次尝试：
-         *   %TEMP% → %LOCALAPPDATA% → 目标目录的父目录 → exe 同目录
+         *   %TEMP% → %LOCALAPPDATA% → exe 同目录 → 系统盘根目录
          *
-         * 为什么要这么写：实测在某些环境里，进程在 %TEMP% 下 Directory.CreateDirectory
-         * 会拿到 ERROR_ACCESS_DENIED（同一路径用资源管理器/命令行却能建）。
-         * 安装器不该因为「临时目录选得不好」就整个失败，所以挨个试，
-         * 试不出来的话才抛异常并写进日志。
+         * 为什么这么写：实测在某些环境下（安装包本身带着低完整性标签，或所在目录受限），
+         * 进程在 %TEMP% 下 Directory.CreateDirectory 会拿到 ACCESS_DENIED。
+         * 安装器不该因为「临时目录选得不好」就整个失败。
          */
         private static string MakeTempDir()
         {
@@ -213,48 +283,11 @@ namespace KhsSetup
                 }
                 catch (Exception ex)
                 {
-                    errors.Add(root + " → " + ex.GetType().Name + ": " + ex.Message);
+                    errors.Add(root + " → " + ex.Message);
                     Program.Log("临时目录候选失败: " + root + " → " + ex.Message);
                 }
             }
             throw new InvalidOperationException("找不到可写的临时目录。" + string.Join(" | ", errors.ToArray()));
-        }
-
-        /** 诊断：把「哪些位置能建目录/写文件」记进日志，便于排障 */
-        public static void Diagnose()
-        {
-            Program.Log("诊断: user=" + Environment.UserName + " temp=" + Path.GetTempPath() +
-                        " cwd=" + Environment.CurrentDirectory);
-            Probe("TEMP", Path.GetTempPath());
-            try { Probe("LOCALAPPDATA", Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)); } catch { }
-            try { Probe("exe-dir", Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)); } catch { }
-        }
-
-        private static void Probe(string label, string parent)
-        {
-            if (string.IsNullOrEmpty(parent)) { Program.Log("  " + label + ": 路径为空"); return; }
-            string dir = Path.Combine(parent, "khs-probe-" + Guid.NewGuid().ToString("N"));
-            try
-            {
-                Directory.CreateDirectory(dir);
-                Program.Log("  " + label + " 建目录 OK");
-                try { Directory.Delete(dir, true); } catch { }
-            }
-            catch (Exception ex)
-            {
-                Program.Log("  " + label + " 建目录 FAIL " + ex.GetType().Name + " — " + ex.Message);
-            }
-            string file = Path.Combine(parent, "khs-probe-" + Guid.NewGuid().ToString("N") + ".txt");
-            try
-            {
-                File.WriteAllText(file, "probe");
-                Program.Log("  " + label + " 写文件 OK");
-                try { File.Delete(file); } catch { }
-            }
-            catch (Exception ex)
-            {
-                Program.Log("  " + label + " 写文件 FAIL " + ex.GetType().Name + " — " + ex.Message);
-            }
         }
 
         private static void WriteResource(string name, string dest)
@@ -294,7 +327,6 @@ namespace KhsSetup
                         int pct;
                         if (int.TryParse(m.Groups[1].Value, out pct))
                         {
-                            // 解压占 4%–88% 这段
                             Say(4 + (int)(pct * 0.84), "正在解压应用文件… " + pct + "%");
                         }
                     }
@@ -304,7 +336,7 @@ namespace KhsSetup
             }
         }
 
-        private static void CopyTree(string from, string to)
+        private void CopyTree(string from, string to)
         {
             Directory.CreateDirectory(to);
             foreach (string dir in Directory.GetDirectories(from, "*", SearchOption.AllDirectories))
@@ -316,27 +348,50 @@ namespace KhsSetup
                 string dest = Path.Combine(to, file.Substring(from.Length).TrimStart('\\'));
                 string parent = Path.GetDirectoryName(dest);
                 if (!string.IsNullOrEmpty(parent)) Directory.CreateDirectory(parent);
-                File.Copy(file, dest, true);
+                if (!CopyWithRetry(file, dest))
+                {
+                    Warn("文件被占用，未能覆盖：" + Path.GetFileName(dest));
+                }
             }
         }
 
-        private void CreateShortcuts()
+        /** 复制失败重试几次（占用往往几百毫秒内就释放了） */
+        private static bool CopyWithRetry(string from, string to)
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                try
+                {
+                    File.Copy(from, to, true);
+                    return true;
+                }
+                catch (IOException) { Thread.Sleep(250); }
+                catch (UnauthorizedAccessException) { Thread.Sleep(250); }
+            }
+            try
+            {
+                File.Copy(from, to, true);
+                return true;
+            }
+            catch { return false; }
+        }
+
+        private void CreateShortcuts(bool tempTarget)
         {
             string exe = Path.Combine(_target, ExeName);
-            MakeLink(Paths.StartMenuLink(), exe);
-            // 桌面快捷方式：装到临时目录（自检）时不建，免得污染桌面
-            if (!_target.StartsWith(Path.GetTempPath(), StringComparison.OrdinalIgnoreCase))
+            if (!MakeLink(Paths.StartMenuLink(), exe)) Warn("开始菜单快捷方式未能创建");
+            if (!tempTarget)
             {
-                MakeLink(Paths.DesktopLink(), exe);
+                if (!MakeLink(Paths.DesktopLink(), exe)) Warn("桌面快捷方式未能创建");
             }
         }
 
-        private static void MakeLink(string linkPath, string target)
+        private static bool MakeLink(string linkPath, string target)
         {
             try
             {
                 Type t = Type.GetTypeFromProgID("WScript.Shell");
-                if (t == null) return;
+                if (t == null) return false;
                 object shell = Activator.CreateInstance(t);
                 object link = t.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, shell, new object[] { linkPath });
                 Type lt = link.GetType();
@@ -347,45 +402,111 @@ namespace KhsSetup
                 lt.InvokeMember("Save", BindingFlags.InvokeMethod, null, link, null);
                 Marshal.ReleaseComObject(link);
                 Marshal.ReleaseComObject(shell);
+                return true;
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Program.Log("创建快捷方式失败: " + Path.GetFileName(linkPath) + " → " + ex.Message);
+                return false;
+            }
         }
 
         private void WriteRegistry(string uninstaller)
         {
-            using (RegistryKey k = Registry.CurrentUser.CreateSubKey(Paths.UninstallKey))
+            try
             {
-                if (k == null) return;
-                string exe = Path.Combine(_target, ExeName);
-                k.SetValue("DisplayName", "KernelHub Studio");
-                k.SetValue("DisplayVersion", Program.Version);
-                k.SetValue("Publisher", "KernelHub");
-                k.SetValue("InstallLocation", _target);
-                k.SetValue("DisplayIcon", exe + ",0");
-                k.SetValue("UninstallString", "\"" + uninstaller + "\"");
-                k.SetValue("QuietUninstallString", "\"" + uninstaller + "\" /S");
-                k.SetValue("NoModify", 1, RegistryValueKind.DWord);
-                k.SetValue("NoRepair", 1, RegistryValueKind.DWord);
+                using (RegistryKey k = Registry.CurrentUser.CreateSubKey(Paths.UninstallKey))
+                {
+                    if (k == null) { Warn("无法写入卸载信息（注册表不可写）"); return; }
+                    string exe = Path.Combine(_target, ExeName);
+                    k.SetValue("DisplayName", "KernelHub Studio");
+                    k.SetValue("DisplayVersion", Program.Version);
+                    k.SetValue("Publisher", "KernelHub");
+                    k.SetValue("InstallLocation", _target);
+                    k.SetValue("DisplayIcon", exe + ",0");
+                    k.SetValue("UninstallString", "\"" + uninstaller + "\"");
+                    k.SetValue("QuietUninstallString", "\"" + uninstaller + "\" /S");
+                    k.SetValue("NoModify", 1, RegistryValueKind.DWord);
+                    k.SetValue("NoRepair", 1, RegistryValueKind.DWord);
+                }
+            }
+            catch (Exception ex)
+            {
+                Warn("卸载信息写入失败：" + ex.Message);
             }
         }
 
-        /** 结束正在运行的实例（更新前必须做，否则文件被占用复制不过去） */
-        public static void KillRunning()
+        /** 结束正在运行的实例；返回结束掉的个数 */
+        public static int KillRunning()
         {
+            int n = 0;
             try
             {
                 foreach (Process p in Process.GetProcessesByName("KernelHub Studio"))
                 {
-                    try { p.Kill(); p.WaitForExit(5000); } catch { }
+                    try
+                    {
+                        p.Kill();
+                        p.WaitForExit(5000);
+                        n++;
+                    }
+                    catch { }
                 }
             }
             catch { }
+            return n;
+        }
+
+        /** 诊断：把「哪些位置能建目录」记进日志，便于排障 */
+        public static void Diagnose()
+        {
+            Program.Log("诊断: user=" + Environment.UserName + " temp=" + Path.GetTempPath() +
+                        " cwd=" + Environment.CurrentDirectory);
+            Probe("TEMP", Path.GetTempPath());
+            try { Probe("LOCALAPPDATA", Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)); } catch { }
+            try { Probe("APPDATA", Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)); } catch { }
+            try { Probe("exe-dir", Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)); } catch { }
+            try { Probe("D盘", @"D:\"); } catch { }
+        }
+
+        /**
+         * 是否处在「写不了用户目录」的受限环境。
+         * 典型情况：安装包文件带着低完整性标签（从受限目录复制出来的），
+         * 进程于是跑在低完整性，写不了 %APPDATA% / 注册表。
+         * 用于在界面上给出可操作提示，而不是让用户看到一句「访问被拒绝」。
+         */
+        public static bool Restricted()
+        {
+            string appData = "";
+            try { appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData); } catch { }
+            if (string.IsNullOrEmpty(appData)) return true;
+            return !Paths.Writable(appData);
+        }
+
+        private static void Probe(string label, string parent)
+        {
+            if (string.IsNullOrEmpty(parent)) { Program.Log("  " + label + ": 路径为空"); return; }
+            string dir = Path.Combine(parent, "khs-probe-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                Directory.CreateDirectory(dir);
+                Program.Log("  " + label + " 建目录 OK");
+                try { Directory.Delete(dir, true); } catch { }
+            }
+            catch (Exception ex)
+            {
+                Program.Log("  " + label + " 建目录 FAIL " + ex.GetType().Name + " — " + ex.Message);
+            }
         }
     }
 
     /* ==================================================================
      * 界面：全部自绘（GDI+）。窗口无系统边框、圆角、可拖动，
      * 三个阶段——选择目录 / 安装中 / 完成——用淡入淡出切换。
+     *
+     * 坐标一律写成「设计像素」（560×340 基准），绘制时用 S() 乘缩放比：
+     * 清单声明了 PerMonitorV2 DPI 感知，字体按真实尺寸渲染，
+     * 不会像位图拉伸那样发糊（旧版就是因为没声明，高 DPI 下字是糊的）。
      * ================================================================== */
 
     internal sealed class SetupForm : Form
@@ -397,7 +518,9 @@ namespace KhsSetup
         private int _percent;
         private string _status = "";
         private string _error = "";
-        private double _fade = 1.0;         // 阶段内容淡入用
+        private string _warnText = "";
+        private double _fade = 1.0;
+        private float _s = 1f;               // DPI 缩放比（96dpi = 1）
         private readonly System.Windows.Forms.Timer _anim;
         private Point _dragOffset;
         private bool _dragging;
@@ -405,11 +528,14 @@ namespace KhsSetup
         private bool _pressedPrimary;
         private bool _hoverClose;
         private bool _makeDesktop = true;
-        private bool _hoverCheck;
+        private bool _restricted;
 
-        private readonly Rectangle _primaryRect = new Rectangle(32, 268, 496, 46);
-        private readonly Rectangle _closeRect = new Rectangle(520, 14, 24, 24);
-        private readonly Rectangle _checkRect = new Rectangle(34, 232, 18, 18);
+        // 设计坐标（按 DPI 缩放后使用）
+        private Rectangle _primaryRect;
+        private Rectangle _closeRect;
+        private Rectangle _checkRect;
+        private Rectangle _browseRect;
+        private Rectangle _pathRect;
 
         public SetupForm(string initialDir)
         {
@@ -423,6 +549,14 @@ namespace KhsSetup
             DoubleBuffered = true;
             KeyPreview = true;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+            /*
+             * 关掉 WinForms 的自动缩放。
+             * 默认 AutoScaleMode = Font：它会按运行时字体与设计字体的差异把整个窗体
+             * 再缩一遍，于是我在 ApplyScale() 里设的 ClientSize 被二次缩放
+             * （实测 560×340 变成了 373×227，比例正好 2/3）。
+             * 缩放由我们自己的 S() 负责，这里必须是 None。
+             */
+            AutoScaleMode = AutoScaleMode.None;
 
             _anim = new System.Windows.Forms.Timer();
             _anim.Interval = 16;
@@ -438,13 +572,106 @@ namespace KhsSetup
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
+            ApplyScale();
+        }
+
+        protected override void OnDpiChangedAfterParent(EventArgs e)
+        {
+            base.OnDpiChangedAfterParent(e);
+            ApplyScale();
+        }
+
+        /** 按当前 DPI 定窗口尺寸与各命中区 */
+        private void ApplyScale()
+        {
+            /*
+             * 缩放比默认取当前显示器 DPI（96dpi = 1.0）。
+             * 环境变量 KHS_SETUP_SCALE 可以强制指定 —— 这只是为了在 100% DPI 的
+             * 机器上也能验证「高 DPI 缩放」这条路径（截图比对版式与字体清晰度），
+             * 正常运行时不需要设置。
+             */
+            _s = 0f;
+            try
+            {
+                string forced = Environment.GetEnvironmentVariable("KHS_SETUP_SCALE");
+                float f;
+                if (!string.IsNullOrEmpty(forced) && float.TryParse(forced, out f) && f >= 0.5f && f <= 4f)
+                {
+                    _s = f;
+                }
+            }
+            catch { }
+            if (_s <= 0.1f)
+            {
+                /*
+                 * 取真实 DPI 用 GetDpiForWindow（Win10 1607+）。
+                 * 不要只用 Control.DeviceDpi：实测在 150% 缩放的机器上它报了 96，
+                 * 结果窗口按 100% 尺寸画，在 150% 屏上显得偏小。
+                 */
+                int dpi = RealDpi();
+                _s = dpi / 96f;
+            }
+            if (_s <= 0.1f) _s = 1f;
+            Program.Log("缩放: _s=" + _s.ToString("0.###") + " DeviceDpi=" + SafeDpi() +
+                        " 窗口=" + S(560) + "x" + S(340));
+
+            ClientSize = new Size(S(560), S(340));
+            _closeRect = S(520, 14, 24, 24);
+            _pathRect = S(32, 162, 400, 34);
+            _browseRect = S(440, 162, 88, 34);
+            _checkRect = S(34, 232, 18, 18);
+            _primaryRect = S(32, 268, 496, 46);
             ApplyRoundRegion();
+            Invalidate();
+        }
+
+        private int S(int v)
+        {
+            return (int)Math.Round(v * _s);
+        }
+
+        private Rectangle S(int x, int y, int w, int h)
+        {
+            return new Rectangle(S(x), S(y), S(w), S(h));
+        }
+
+        private float SF(float v)
+        {
+            return v * _s;
+        }
+
+        private int SafeDpi()
+        {
+            try { return DeviceDpi; } catch { return -1; }
+        }
+
+        /** 窗口所在显示器的真实 DPI（拿不到就退回 DeviceDpi / 96） */
+        private int RealDpi()
+        {
+            try
+            {
+                if (Handle != IntPtr.Zero)
+                {
+                    uint dpi = GetDpiForWindow(Handle);
+                    if (dpi >= 48 && dpi <= 480) return (int)dpi;
+                }
+            }
+            catch { }
+            try
+            {
+                using (Graphics g = CreateGraphics())
+                {
+                    if (g != null && g.DpiX >= 48 && g.DpiX <= 480) return (int)Math.Round(g.DpiX);
+                }
+            }
+            catch { }
+            int d = SafeDpi();
+            return d >= 48 ? d : 96;
         }
 
         private void ApplyRoundRegion()
         {
-            // 圆角窗口：用 Win32 圆角矩形做 Region（比 GraphicsPath 干净）
-            IntPtr rgn = CreateRoundRectRgn(0, 0, Width + 1, Height + 1, 16, 16);
+            IntPtr rgn = CreateRoundRectRgn(0, 0, Width + 1, Height + 1, S(16), S(16));
             Region = Region.FromHrgn(rgn);
             DeleteObject(rgn);
         }
@@ -471,6 +698,7 @@ namespace KhsSetup
         {
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
+            // 字体走 ClearType；配合清单里的 DPI 感知才是清晰的关键
             g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
             g.Clear(Brand.Paper);
 
@@ -482,7 +710,6 @@ namespace KhsSetup
             else if (_stage == Stage.Done) DrawDone(g, alpha);
             else DrawFailed(g, alpha);
 
-            // 外框（1px 细线，收口）
             using (Pen p = new Pen(Brand.Rule))
             {
                 g.DrawRectangle(p, 0, 0, Width - 1, Height - 1);
@@ -491,51 +718,56 @@ namespace KhsSetup
 
         private void DrawTitleBar(Graphics g)
         {
-            using (Font f = Brand.Ui(9.5f, FontStyle.Bold))
+            using (Font f = Brand.Ui(SF(9.5f), FontStyle.Bold))
             using (SolidBrush b = new SolidBrush(Brand.Ink))
             {
-                g.DrawString("KERNELHUB STUDIO", f, b, 32, 20);
+                g.DrawString("KERNELHUB STUDIO", f, b, S(32), S(20));
             }
-            // 关闭按钮：一个细十字
             Color c = _hoverClose ? Brand.Ink : Brand.Ink3;
-            using (Pen p = new Pen(c, 1.4f))
+            using (Pen p = new Pen(c, Math.Max(1f, SF(1.4f))))
             {
-                g.DrawLine(p, _closeRect.Left + 8, _closeRect.Top + 8, _closeRect.Right - 8, _closeRect.Bottom - 8);
-                g.DrawLine(p, _closeRect.Right - 8, _closeRect.Top + 8, _closeRect.Left + 8, _closeRect.Bottom - 8);
+                g.DrawLine(p, _closeRect.Left + S(8), _closeRect.Top + S(8), _closeRect.Right - S(8), _closeRect.Bottom - S(8));
+                g.DrawLine(p, _closeRect.Right - S(8), _closeRect.Top + S(8), _closeRect.Left + S(8), _closeRect.Bottom - S(8));
             }
         }
 
         private void DrawReady(Graphics g, int alpha)
         {
-            using (Font fTitle = Brand.Ui(17f, FontStyle.Regular))
-            using (Font fLabel = Brand.Ui(9f, FontStyle.Regular))
-            using (Font fBody = Brand.Ui(9.5f, FontStyle.Regular))
+            using (Font fTitle = Brand.Ui(SF(17f), FontStyle.Regular))
+            using (Font fLabel = Brand.Ui(SF(9f), FontStyle.Regular))
+            using (Font fBody = Brand.Ui(SF(9.5f), FontStyle.Regular))
             {
-                DrawString(g, "选择安装位置", fTitle, Brand.Ink, 32, 68, alpha);
-                DrawString(g, "KernelHub Studio 将安装到下面的文件夹。", fBody, Brand.Ink2, 32, 106, alpha);
+                DrawString(g, "选择安装位置", fTitle, Brand.Ink, S(32), S(68), alpha);
+                DrawString(g, "KernelHub Studio 将安装到下面的文件夹。", fBody, Brand.Ink2, S(32), S(106), alpha);
+                DrawString(g, "安装目录", fLabel, Brand.Ink3, S(32), S(142), alpha);
 
-                DrawString(g, "安装目录", fLabel, Brand.Ink3, 32, 142, alpha);
-
-                // 路径框（圆角描边）
-                Rectangle box = new Rectangle(32, 162, 400, 34);
-                using (GraphicsPath path = Round(box, 8))
+                // 路径框
+                using (GraphicsPath path = Round(_pathRect, S(8)))
                 using (Pen p = new Pen(Brand.Rule))
                 using (SolidBrush b = new SolidBrush(Brand.Paper))
                 {
                     g.FillPath(b, path);
                     g.DrawPath(p, path);
                 }
-                using (Font fMono = Brand.Ui(9f, FontStyle.Regular))
+                using (Font fMono = Brand.Ui(SF(9f), FontStyle.Regular))
                 {
-                    DrawString(g, Trim(_dir, 52), fMono, Brand.Ink, box.Left + 12, box.Top + 9, alpha);
+                    RectangleF inner = new RectangleF(_pathRect.Left + S(12), _pathRect.Top + S(8),
+                        _pathRect.Width - S(24), _pathRect.Height - S(12));
+                    using (StringFormat sf = new StringFormat())
+                    {
+                        sf.Trimming = StringTrimming.EllipsisPath;
+                        sf.FormatFlags = StringFormatFlags.NoWrap;
+                        using (SolidBrush fb = new SolidBrush(Color.FromArgb(alpha, Brand.Ink)))
+                        {
+                            g.DrawString(_dir, fMono, fb, inner, sf);
+                        }
+                    }
                 }
 
-                // 更改按钮
-                Rectangle browse = new Rectangle(440, 162, 88, 34);
-                DrawGhostButton(g, browse, "更改", alpha, false);
+                DrawGhostButton(g, _browseRect, "更改", alpha);
 
                 // 复选框
-                using (GraphicsPath path = Round(_checkRect, 4))
+                using (GraphicsPath path = Round(_checkRect, S(4)))
                 using (SolidBrush fill = new SolidBrush(_makeDesktop ? Brand.Accent : Brand.Paper))
                 using (Pen border = new Pen(_makeDesktop ? Brand.Accent : Brand.Rule))
                 {
@@ -544,13 +776,23 @@ namespace KhsSetup
                 }
                 if (_makeDesktop)
                 {
-                    using (Pen tick = new Pen(Brand.Paper, 2f))
+                    using (Pen tick = new Pen(Brand.Paper, Math.Max(1.6f, SF(2f))))
                     {
-                        g.DrawLine(tick, _checkRect.Left + 4, _checkRect.Top + 9, _checkRect.Left + 7, _checkRect.Top + 12);
-                        g.DrawLine(tick, _checkRect.Left + 7, _checkRect.Top + 12, _checkRect.Right - 3, _checkRect.Top + 5);
+                        g.DrawLine(tick, _checkRect.Left + S(4), _checkRect.Top + S(9), _checkRect.Left + S(7), _checkRect.Top + S(12));
+                        g.DrawLine(tick, _checkRect.Left + S(7), _checkRect.Top + S(12), _checkRect.Right - S(3), _checkRect.Top + S(5));
                     }
                 }
-                DrawString(g, "创建桌面快捷方式", fBody, Brand.Ink2, _checkRect.Right + 8, _checkRect.Top + 1, alpha);
+                DrawString(g, "创建桌面快捷方式", fBody, Brand.Ink2, _checkRect.Right + S(8), _checkRect.Top + S(1), alpha);
+
+                // 受限环境的可操作提示（比一句「访问被拒绝」有用得多）
+                if (_restricted)
+                {
+                    using (Font fWarn = Brand.Ui(SF(8.5f), FontStyle.Regular))
+                    {
+                        DrawString(g, "提示：当前环境写不了用户目录。若安装失败，请把安装包复制到普通文件夹（例如 D:\\）后重试。",
+                            fWarn, Brand.Warn, S(32), S(206), alpha);
+                    }
+                }
 
                 DrawPrimaryButton(g, alpha);
             }
@@ -558,54 +800,82 @@ namespace KhsSetup
 
         private void DrawWorking(Graphics g, int alpha)
         {
-            using (Font fTitle = Brand.Ui(17f, FontStyle.Regular))
-            using (Font fBody = Brand.Ui(9.5f, FontStyle.Regular))
+            using (Font fTitle = Brand.Ui(SF(17f), FontStyle.Regular))
+            using (Font fBody = Brand.Ui(SF(9.5f), FontStyle.Regular))
             {
-                DrawString(g, "正在安装", fTitle, Brand.Ink, 32, 68, alpha);
-                DrawString(g, _status, fBody, Brand.Ink2, 32, 106, alpha);
+                DrawString(g, "正在安装", fTitle, Brand.Ink, S(32), S(68), alpha);
+                DrawString(g, _status, fBody, Brand.Ink2, S(32), S(106), alpha);
 
-                // 进度条
-                Rectangle track = new Rectangle(32, 150, 496, 8);
-                using (GraphicsPath tp = Round(track, 4))
+                Rectangle track = S(32, 150, 496, 8);
+                using (GraphicsPath tp = Round(track, S(4)))
                 using (SolidBrush tb = new SolidBrush(Brand.Track))
                 {
                     g.FillPath(tb, tp);
                 }
                 int w = (int)Math.Round(track.Width * (_percent / 100.0));
-                if (w > 2)
+                if (w > S(2))
                 {
-                    using (GraphicsPath fp = Round(new Rectangle(track.Left, track.Top, w, track.Height), 4))
+                    using (GraphicsPath fp = Round(new Rectangle(track.Left, track.Top, w, track.Height), S(4)))
                     using (SolidBrush fb = new SolidBrush(Brand.Accent))
                     {
                         g.FillPath(fb, fp);
                     }
                 }
-                using (Font fPct = Brand.Ui(13f, FontStyle.Regular))
+                using (Font fPct = Brand.Ui(SF(13f), FontStyle.Regular))
                 {
-                    DrawString(g, _percent + "%", fPct, Brand.Ink, 32, 180, alpha);
+                    DrawString(g, _percent + "%", fPct, Brand.Ink, S(32), S(180), alpha);
                 }
             }
         }
 
         private void DrawDone(Graphics g, int alpha)
         {
-            using (Font fTitle = Brand.Ui(17f, FontStyle.Regular))
-            using (Font fBody = Brand.Ui(9.5f, FontStyle.Regular))
+            using (Font fTitle = Brand.Ui(SF(17f), FontStyle.Regular))
+            using (Font fBody = Brand.Ui(SF(9.5f), FontStyle.Regular))
             {
-                DrawString(g, "安装完成", fTitle, Brand.Ink, 32, 68, alpha);
-                DrawString(g, "已安装到 " + Trim(_dir, 46), fBody, Brand.Ink2, 32, 106, alpha);
-                DrawString(g, "已安装的插件与设置保存在用户目录，不受重装影响。", fBody, Brand.Ink3, 32, 130, alpha);
+                DrawString(g, "安装完成", fTitle, Brand.Ink, S(32), S(68), alpha);
+                RectangleF line = new RectangleF(S(32), S(106), S(496), S(24));
+                using (StringFormat sf = new StringFormat())
+                {
+                    sf.Trimming = StringTrimming.EllipsisPath;
+                    sf.FormatFlags = StringFormatFlags.NoWrap;
+                    using (SolidBrush b = new SolidBrush(Color.FromArgb(alpha, Brand.Ink2)))
+                    {
+                        g.DrawString("已安装到 " + _dir, fBody, b, line, sf);
+                    }
+                }
+                DrawString(g, "已安装的插件与设置保存在用户目录，不受重装影响。", fBody, Brand.Ink3, S(32), S(130), alpha);
+                if (_warnText.Length > 0)
+                {
+                    using (Font fWarn = Brand.Ui(SF(8.5f), FontStyle.Regular))
+                    {
+                        RectangleF wbox = new RectangleF(S(32), S(154), S(496), S(40));
+                        using (SolidBrush b = new SolidBrush(Color.FromArgb(alpha, Brand.Warn)))
+                        {
+                            g.DrawString(_warnText, fWarn, b, wbox);
+                        }
+                    }
+                }
             }
             DrawPrimaryButton(g, alpha);
         }
 
         private void DrawFailed(Graphics g, int alpha)
         {
-            using (Font fTitle = Brand.Ui(17f, FontStyle.Regular))
-            using (Font fBody = Brand.Ui(9.5f, FontStyle.Regular))
+            using (Font fTitle = Brand.Ui(SF(17f), FontStyle.Regular))
+            using (Font fBody = Brand.Ui(SF(9.5f), FontStyle.Regular))
             {
-                DrawString(g, "安装失败", fTitle, Brand.Accent, 32, 68, alpha);
-                DrawString(g, Trim(_error, 120), fBody, Brand.Ink2, 32, 106, alpha);
+                DrawString(g, "安装失败", fTitle, Brand.Accent, S(32), S(68), alpha);
+                // 错误按矩形自动换行，不再截断 —— 信息完整才好排查
+                RectangleF box = new RectangleF(S(32), S(104), S(496), S(84));
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(alpha, Brand.Ink2)))
+                {
+                    g.DrawString(_error, fBody, b, box);
+                }
+                using (Font fHint = Brand.Ui(SF(8.5f), FontStyle.Regular))
+                {
+                    DrawString(g, "详细日志：" + Program.LogPath(), fHint, Brand.Ink3, S(32), S(196), alpha);
+                }
             }
             DrawPrimaryButton(g, alpha);
         }
@@ -625,12 +895,12 @@ namespace KhsSetup
                 Math.Min(255, Brand.Accent.G + 16),
                 Math.Min(255, Brand.Accent.B + 16));
 
-            using (GraphicsPath path = Round(_primaryRect, 22))
+            using (GraphicsPath path = Round(_primaryRect, S(22)))
             using (SolidBrush b = new SolidBrush(Color.FromArgb(alpha, baseColor)))
             {
                 g.FillPath(b, path);
             }
-            using (Font f = Brand.Ui(11f, FontStyle.Bold))
+            using (Font f = Brand.Ui(SF(11f), FontStyle.Bold))
             using (StringFormat sf = new StringFormat())
             {
                 sf.Alignment = StringAlignment.Center;
@@ -642,16 +912,16 @@ namespace KhsSetup
             }
         }
 
-        private void DrawGhostButton(Graphics g, Rectangle r, string text, int alpha, bool hover)
+        private void DrawGhostButton(Graphics g, Rectangle r, string text, int alpha)
         {
-            using (GraphicsPath path = Round(r, 8))
-            using (SolidBrush b = new SolidBrush(Color.FromArgb(alpha, hover ? Brand.Hover : Brand.Paper)))
+            using (GraphicsPath path = Round(r, S(8)))
+            using (SolidBrush b = new SolidBrush(Color.FromArgb(alpha, Brand.Paper)))
             using (Pen p = new Pen(Color.FromArgb(alpha, Brand.Rule)))
             {
                 g.FillPath(b, path);
                 g.DrawPath(p, path);
             }
-            using (Font f = Brand.Ui(9f, FontStyle.Regular))
+            using (Font f = Brand.Ui(SF(9f), FontStyle.Regular))
             using (StringFormat sf = new StringFormat())
             {
                 sf.Alignment = StringAlignment.Center;
@@ -674,19 +944,15 @@ namespace KhsSetup
         private static GraphicsPath Round(Rectangle r, int radius)
         {
             GraphicsPath path = new GraphicsPath();
-            int d = radius * 2;
+            int d = Math.Max(2, radius * 2);
+            if (d > r.Height) d = r.Height;
+            if (d > r.Width) d = r.Width;
             path.AddArc(r.Left, r.Top, d, d, 180, 90);
             path.AddArc(r.Right - d, r.Top, d, d, 270, 90);
             path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
             path.AddArc(r.Left, r.Bottom - d, d, d, 90, 90);
             path.CloseFigure();
             return path;
-        }
-
-        private static string Trim(string s, int max)
-        {
-            if (string.IsNullOrEmpty(s)) return "";
-            return s.Length <= max ? s : "…" + s.Substring(s.Length - max + 1);
         }
 
         /* ------------------------------------------------------------ 交互 */
@@ -700,8 +966,7 @@ namespace KhsSetup
                 Invalidate();
                 return;
             }
-            // 标题栏区域拖动窗口
-            if (e.Y < 56 && !_closeRect.Contains(e.Location))
+            if (e.Y < S(56) && !_closeRect.Contains(e.Location))
             {
                 _dragging = true;
                 _dragOffset = e.Location;
@@ -712,12 +977,10 @@ namespace KhsSetup
         {
             bool hoverPrimary = _primaryRect.Contains(e.Location) && _stage != Stage.Working;
             bool hoverClose = _closeRect.Contains(e.Location);
-            bool hoverCheck = _checkRect.Contains(e.Location) || (e.X > _checkRect.Left && e.X < 260 && e.Y > 226 && e.Y < 254);
-            if (hoverPrimary != _hoverPrimary || hoverClose != _hoverClose || hoverCheck != _hoverCheck)
+            if (hoverPrimary != _hoverPrimary || hoverClose != _hoverClose)
             {
                 _hoverPrimary = hoverPrimary;
                 _hoverClose = hoverClose;
-                _hoverCheck = hoverCheck;
                 Invalidate();
             }
             if (_dragging)
@@ -739,31 +1002,36 @@ namespace KhsSetup
 
         private void OnMouseClick(object sender, MouseEventArgs e)
         {
-            if (_closeRect.Contains(e.Location))
-            {
-                Close();
-                return;
-            }
+            if (_closeRect.Contains(e.Location)) { Close(); return; }
+
             if (_stage == Stage.Ready)
             {
-                if (new Rectangle(440, 162, 88, 34).Contains(e.Location)) { Browse(); return; }
-                if (_checkRect.Contains(e.Location) || (e.X > _checkRect.Left && e.X < 260 && e.Y > 226 && e.Y < 254))
+                if (_browseRect.Contains(e.Location)) { Browse(); return; }
+                if (_checkRect.Contains(e.Location) || CheckLabelHit(e.Location))
                 {
                     _makeDesktop = !_makeDesktop;
                     Invalidate();
                     return;
                 }
                 if (_primaryRect.Contains(e.Location)) { BeginInstall(); return; }
+                return;
             }
-            else if (_stage == Stage.Done && _primaryRect.Contains(e.Location))
+            if (_stage == Stage.Done && _primaryRect.Contains(e.Location))
             {
                 LaunchApp();
                 Close();
+                return;
             }
-            else if (_stage == Stage.Failed && _primaryRect.Contains(e.Location))
+            if (_stage == Stage.Failed && _primaryRect.Contains(e.Location))
             {
                 Close();
             }
+        }
+
+        private bool CheckLabelHit(Point p)
+        {
+            return p.X > _checkRect.Right && p.X < _checkRect.Right + S(180) &&
+                   p.Y > _checkRect.Top - S(4) && p.Y < _checkRect.Bottom + S(4);
         }
 
         private void OnKeyDown(object sender, KeyEventArgs e)
@@ -780,6 +1048,7 @@ namespace KhsSetup
                 dlg.ShowNewFolderButton = true;
                 if (dlg.ShowDialog(this) == DialogResult.OK && !string.IsNullOrEmpty(dlg.SelectedPath))
                 {
+                    // 用户选的是「父目录」，应用名再拼一层（与默认值 D:\KernelHub Studio 一致）
                     _dir = Path.Combine(dlg.SelectedPath, "KernelHub Studio");
                     Invalidate();
                 }
@@ -807,6 +1076,14 @@ namespace KhsSetup
                         try { BeginInvoke((MethodInvoker)delegate { Invalidate(); }); } catch { }
                     });
                     inst.Run();
+
+                    string warn = "";
+                    if (inst.Warnings.Count > 0)
+                    {
+                        int take = Math.Min(2, inst.Warnings.Count);
+                        warn = inst.Warnings.Count + " 条提示：" +
+                               string.Join("；", inst.Warnings.GetRange(0, take).ToArray());
+                    }
                     try
                     {
                         BeginInvoke((MethodInvoker)delegate
@@ -814,6 +1091,7 @@ namespace KhsSetup
                             _stage = Stage.Done;
                             _percent = 100;
                             _status = "安装完成";
+                            _warnText = warn;
                             StartFade();
                             Invalidate();
                         });
@@ -858,6 +1136,9 @@ namespace KhsSetup
 
         [DllImport("gdi32.dll")]
         private static extern bool DeleteObject(IntPtr hObject);
+
+        [DllImport("user32.dll")]
+        private static extern uint GetDpiForWindow(IntPtr hwnd);
     }
 
     internal static class Program
@@ -895,14 +1176,13 @@ namespace KhsSetup
 
             if (o.Silent)
             {
-                // 静默安装 / 更新：不显示界面。装到指定目录或上次记录的目录。
                 if (o.Updated) Installer.KillRunning();
                 string dir = string.IsNullOrEmpty(o.Dir) ? Paths.DefaultDir() : o.Dir;
                 try
                 {
                     Installer inst = new Installer(dir, delegate(int pct, string text) { Log(pct + "% " + text); });
                     inst.Run();
-                    Log("静默安装完成");
+                    Log("静默安装完成" + (inst.Warnings.Count > 0 ? "（" + inst.Warnings.Count + " 条提示）" : ""));
                     return 0;
                 }
                 catch (Exception ex)
@@ -921,8 +1201,7 @@ namespace KhsSetup
 
         /**
          * 版本号来自构建时生成的 Version.g.cs（tools/build-installer.js 写出），
-         * 这样注册表里的 DisplayVersion 与实际发布版本一定一致，
-         * 不需要在读 exe 资源上绕弯。
+         * 这样注册表里的 DisplayVersion 与实际发布版本一定一致。
          */
         private static string FindVersion()
         {

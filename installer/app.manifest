@@ -1,17 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  自绘安装器 / 卸载器的清单（2.2.7）
+  自绘安装器 / 卸载器的清单（2.2.7 起）
 
-  为什么必须要有它：Windows 的 UAC 有一条「安装程序检测」启发式规则 ——
-  文件名里含 setup / install 字样的 exe，如果**没有清单**声明执行级别，
-  系统会自动要求提权（弹 UAC）。我们的安装器是**按用户安装**（写 HKCU、
-  装到 %LOCALAPPDATA%\Programs），根本不需要管理员权限，被启发式规则拖去提权
-  反而会失败（实测报「操作被用户取消」）。
+  1) requestedExecutionLevel = asInvoker（必须有）
+     Windows 的 UAC 有一条「安装程序检测」启发式规则：文件名里含 setup / install
+     字样的 exe，如果**没有清单**声明执行级别，系统会自动要求提权（弹 UAC）。
+     我们的安装器按用户安装（写 HKCU、装到 D:\KernelHub Studio 或
+     %LOCALAPPDATA%\Programs），不需要管理员权限；被启发式规则拖去提权反而会
+     失败（实测报「操作被用户取消」）。
 
-  这里显式声明 asInvoker：不请求提权，按普通权限运行。
+  2) dpiAware = PerMonitorV2（2.2.8 起）
+     界面是固定像素自绘的。不声明 DPI 感知时，Windows 会把整个窗口按显示缩放
+     位图放大 —— 高 DPI 屏幕上字就是糊的（用户反馈「字体模糊」）。
+     声明之后由程序自己按缩放比绘制，字体按真实尺寸渲染，清晰。
+     程序内部用 S() 把设计坐标乘以缩放比，版式在任何缩放下都一致。
 
-  刻意**不声明** dpiAware：界面是固定像素自绘的，让系统按显示缩放整体放大
-  （高 DPI 下略软，但版式不会被缩放打乱）。
+  注意：**不要**声明 `dpiAware=false`（那等于主动要求位图拉伸）。
 -->
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <assemblyIdentity version="1.0.0.0" name="KernelHub.Studio.Setup" type="win32" />
@@ -29,4 +33,10 @@
       <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
     </application>
   </compatibility>
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">permonitorv2,permonitor</dpiAwareness>
+    </windowsSettings>
+  </application>
 </assembly>
